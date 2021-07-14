@@ -4,7 +4,12 @@
 import * as assert from 'assert';
 
 import { PythonReleaseLevel, PythonVersion } from '../../../../client/pythonEnvironments/base/info';
-import { getEmptyVersion, parseVersion } from '../../../../client/pythonEnvironments/base/info/pythonVersion';
+import {
+    compareSemVerLikeVersions,
+    getEmptyVersion,
+    getShortVersionString,
+    parseVersion,
+} from '../../../../client/pythonEnvironments/base/info/pythonVersion';
 
 export function ver(
     major: number,
@@ -34,6 +39,26 @@ const VERSION_STRINGS: [string, PythonVersion][] = [
     ['3.9.0rc1', ver(3, 9, 0, 'candidate', 1)],
     ['2.7.11a3', ver(2, 7, 11, 'alpha', 3)],
 ];
+
+suite('pyenvs info - getShortVersionString', () => {
+    for (const data of VERSION_STRINGS) {
+        const [expected, info] = data;
+        test(`conversion works for '${expected}'`, () => {
+            const result = getShortVersionString(info);
+
+            assert.equal(result, expected);
+        });
+    }
+
+    test('conversion works for final', () => {
+        const expected = '3.3.1';
+        const info = ver(3, 3, 1, 'final', 0);
+
+        const result = getShortVersionString(info);
+
+        assert.equal(result, expected);
+    });
+});
 
 suite('pyenvs info - parseVersion', () => {
     suite('full versions (short)', () => {
@@ -144,6 +169,63 @@ suite('pyenvs info - parseVersion', () => {
             test(`conversion does not work for '${text}'`, () => {
                 assert.throws(() => parseVersion(text));
             });
+        });
+    });
+});
+
+suite('pyenvs info - compareSemVerLikeVersions', () => {
+    const testData = [
+        {
+            v1: { major: 2, minor: 7, patch: 19 },
+            v2: { major: 3, minor: 7, patch: 4 },
+            expected: -1,
+        },
+        {
+            v1: { major: 2, minor: 7, patch: 19 },
+            v2: { major: 2, minor: 7, patch: 19 },
+            expected: 0,
+        },
+        {
+            v1: { major: 3, minor: 7, patch: 4 },
+            v2: { major: 2, minor: 7, patch: 19 },
+            expected: 1,
+        },
+        {
+            v1: { major: 3, minor: 8, patch: 1 },
+            v2: { major: 3, minor: 9, patch: 1 },
+            expected: -1,
+        },
+        {
+            v1: { major: 3, minor: 9, patch: 1 },
+            v2: { major: 3, minor: 9, patch: 1 },
+            expected: 0,
+        },
+        {
+            v1: { major: 3, minor: 9, patch: 1 },
+            v2: { major: 3, minor: 8, patch: 1 },
+            expected: 1,
+        },
+        {
+            v1: { major: 3, minor: 9, patch: 0 },
+            v2: { major: 3, minor: 9, patch: 1 },
+            expected: -1,
+        },
+        {
+            v1: { major: 3, minor: 9, patch: 1 },
+            v2: { major: 3, minor: 9, patch: 1 },
+            expected: 0,
+        },
+        {
+            v1: { major: 3, minor: 9, patch: 1 },
+            v2: { major: 3, minor: 9, patch: 0 },
+            expected: 1,
+        },
+    ];
+
+    testData.forEach((data) => {
+        test(`Compare versions ${JSON.stringify(data.v1)} and ${JSON.stringify(data.v2)}`, () => {
+            const actual = compareSemVerLikeVersions(data.v1, data.v2);
+            assert.deepStrictEqual(actual, data.expected);
         });
     });
 });

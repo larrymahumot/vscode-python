@@ -1,60 +1,60 @@
 import { inject, injectable } from 'inversify';
 import { ConfigurationTarget, Uri } from 'vscode';
 import { IDocumentManager, IWorkspaceService } from '../common/application/types';
+import { inDiscoveryExperiment } from '../common/experiments/helpers';
 import { traceError } from '../common/logger';
 import { FileSystemPaths } from '../common/platform/fs-paths';
 import { IPythonExecutionFactory } from '../common/process/types';
-import { IPersistentStateFactory, Resource } from '../common/types';
+import { IExperimentService, IPersistentStateFactory, Resource } from '../common/types';
 import { IServiceContainer } from '../ioc/types';
+import { compareSemVerLikeVersions } from '../pythonEnvironments/base/info/pythonVersion';
 import { isMacDefaultPythonPath } from '../pythonEnvironments/discovery';
-import { InterpeterHashProviderFactory } from '../pythonEnvironments/discovery/locators/services/hashProviderFactory';
+import { getInterpreterHash } from '../pythonEnvironments/discovery/locators/services/hashProvider';
 import {
     EnvironmentType,
     getEnvironmentTypeName,
     InterpreterInformation,
     PythonEnvironment,
-    sortInterpreters,
 } from '../pythonEnvironments/info';
 import { IComponentAdapter, IInterpreterHelper, WorkspacePythonPath } from './contracts';
-import { IInterpreterHashProviderFactory } from './locators/types';
 
-const EXPITY_DURATION = 24 * 60 * 60 * 1000;
+const EXPIRY_DURATION = 24 * 60 * 60 * 1000;
 type CachedPythonInterpreter = Partial<PythonEnvironment> & { fileHash: string };
 
-export function getFirstNonEmptyLineFromMultilineString(stdout: string) {
-    if (!stdout) {
-        return '';
-    }
-    const lines = stdout
-        .split(/\r?\n/g)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-    return lines.length > 0 ? lines[0] : '';
-}
-
-export function isInterpreterLocatedInWorkspace(interpreter: PythonEnvironment, activeWorkspaceUri: Uri) {
+export function isInterpreterLocatedInWorkspace(interpreter: PythonEnvironment, activeWorkspaceUri: Uri): boolean {
     const fileSystemPaths = FileSystemPaths.withDefaults();
     const interpreterPath = fileSystemPaths.normCase(interpreter.path);
     const resourcePath = fileSystemPaths.normCase(activeWorkspaceUri.fsPath);
     return interpreterPath.startsWith(resourcePath);
 }
 
-// The parts of IComponentAdapter used here.
-interface IComponent {
-    getInterpreterInformation(pythonPath: string): Promise<undefined | Partial<PythonEnvironment>>;
-    isMacDefaultPythonPath(pythonPath: string): Promise<boolean | undefined>;
+/**
+ * Build a version-sorted list from the given one, with lowest first.
+ */
+function sortInterpreters(interpreters: PythonEnvironment[]): PythonEnvironment[] {
+    if (interpreters.length === 0) {
+        return [];
+    }
+    if (interpreters.length === 1) {
+        return [interpreters[0]];
+    }
+    const sorted = interpreters.slice();
+    sorted.sort((a, b) => (a.version && b.version ? compareSemVerLikeVersions(a.version, b.version) : 0));
+    return sorted;
 }
 
 @injectable()
 export class InterpreterHelper implements IInterpreterHelper {
     private readonly persistentFactory: IPersistentStateFactory;
+
     constructor(
         @inject(IServiceContainer) private serviceContainer: IServiceContainer,
-        @inject(InterpeterHashProviderFactory) private readonly hashProviderFactory: IInterpreterHashProviderFactory,
-        @inject(IComponentAdapter) private readonly pyenvs: IComponent,
+        @inject(IComponentAdapter) private readonly pyenvs: IComponentAdapter,
+        @inject(IExperimentService) private readonly experimentService: IExperimentService,
     ) {
         this.persistentFactory = this.serviceContainer.get<IPersistentStateFactory>(IPersistentStateFactory);
     }
+
     public getActiveWorkspaceUri(resource: Resource): WorkspacePythonPath | undefined {
         const workspaceService = this.serviceContainer.get<IWorkspaceService>(IWorkspaceService);
         if (!workspaceService.hasWorkspaceFolders) {
@@ -79,23 +79,21 @@ export class InterpreterHelper implements IInterpreterHelper {
             }
         }
     }
+
     public async getInterpreterInformation(pythonPath: string): Promise<undefined | Partial<PythonEnvironment>> {
-        const found = await this.pyenvs.getInterpreterInformation(pythonPath);
-        if (found !== undefined) {
-            return found;
+        if (await inDiscoveryExperiment(this.experimentService)) {
+            return this.pyenvs.getInterpreterInformation(pythonPath);
         }
 
-        const fileHash = await this.hashProviderFactory
-            .create({ pythonPath })
-            .then((provider) => provider.getInterpreterHash(pythonPath))
-            .catch((ex) => {
-                traceError(`Failed to create File hash for interpreter ${pythonPath}`, ex);
-                return '';
-            });
+        const fileHash = await getInterpreterHash(pythonPath).catch((ex) => {
+            traceError(`Failed to create File hash for interpreter ${pythonPath}`, ex);
+            return undefined;
+        });
+
         const store = this.persistentFactory.createGlobalPersistentState<CachedPythonInterpreter>(
             `${pythonPath}.v3`,
             undefined,
-            EXPITY_DURATION,
+            EXPIRY_DURATION,
         );
         if (store.value && fileHash && store.value.fileHash === fileHash) {
             return store.value;
@@ -111,6 +109,12 @@ export class InterpreterHelper implements IInterpreterHelper {
             if (!info) {
                 return;
             }
+
+            // If hash value is undefined then don't store it.
+            if (!fileHash) {
+                return info;
+            }
+
             const details = {
                 ...info,
                 fileHash,
@@ -119,19 +123,21 @@ export class InterpreterHelper implements IInterpreterHelper {
             return details;
         } catch (ex) {
             traceError(`Failed to get interpreter information for '${pythonPath}'`, ex);
-            return;
         }
     }
+
     public async isMacDefaultPythonPath(pythonPath: string): Promise<boolean> {
-        const result = await this.pyenvs.isMacDefaultPythonPath(pythonPath);
-        if (result !== undefined) {
-            return result;
+        if (await inDiscoveryExperiment(this.experimentService)) {
+            return this.pyenvs.isMacDefaultPythonPath(pythonPath);
         }
+
         return isMacDefaultPythonPath(pythonPath);
     }
-    public getInterpreterTypeDisplayName(interpreterType: EnvironmentType) {
+
+    public getInterpreterTypeDisplayName(interpreterType: EnvironmentType): string {
         return getEnvironmentTypeName(interpreterType);
     }
+
     public getBestInterpreter(interpreters?: PythonEnvironment[]): PythonEnvironment | undefined {
         if (!Array.isArray(interpreters) || interpreters.length === 0) {
             return;

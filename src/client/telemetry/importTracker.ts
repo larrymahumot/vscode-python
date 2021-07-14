@@ -14,6 +14,7 @@ import { isTestExecution } from '../common/constants';
 import '../common/extensions';
 import { IDisposableRegistry } from '../common/types';
 import { noop } from '../common/utils/misc';
+import { TorchProfilerImportRegEx } from '../tensorBoard/helpers';
 import { EventName } from './constants';
 
 /*
@@ -48,7 +49,7 @@ const testExecution = isTestExecution();
 export class ImportTracker implements IExtensionSingleActivationService {
     private pendingChecks = new Map<string, NodeJS.Timer>();
 
-    private sentMatches: Set<string> = new Set<string>();
+    private static sentMatches: Set<string> = new Set<string>();
 
     // eslint-disable-next-line global-require
     private hashFn = require('hash.js').sha256;
@@ -70,9 +71,13 @@ export class ImportTracker implements IExtensionSingleActivationService {
         this.documentManager.textDocuments.forEach((d) => this.onOpenedOrSavedDocument(d));
     }
 
+    public static hasModuleImport(moduleName: string): boolean {
+        return this.sentMatches.has(moduleName);
+    }
+
     private onOpenedOrSavedDocument(document: TextDocument) {
         // Make sure this is a Python file.
-        if (path.extname(document.fileName) === '.py') {
+        if (path.extname(document.fileName).toLowerCase() === '.py') {
             this.scheduleDocument(document);
         }
     }
@@ -108,10 +113,10 @@ export class ImportTracker implements IExtensionSingleActivationService {
 
     private sendTelemetry(packageName: string) {
         // No need to send duplicate telemetry or waste CPU cycles on an unneeded hash.
-        if (this.sentMatches.has(packageName)) {
+        if (ImportTracker.sentMatches.has(packageName)) {
             return;
         }
-        this.sentMatches.add(packageName);
+        ImportTracker.sentMatches.add(packageName);
         // Hash the package name so that we will never accidentally see a
         // user's private package name.
         const hash = this.hashFn().update(packageName).digest('hex');
@@ -134,6 +139,9 @@ export class ImportTracker implements IExtensionSingleActivationService {
                         // Can't pass in `this.sendTelemetry` directly as that rebinds `this`.
                         packageNames.forEach((p) => this.sendTelemetry(p));
                     }
+                }
+                if (s && TorchProfilerImportRegEx.test(s)) {
+                    sendTelemetryEvent(EventName.TENSORBOARD_TORCH_PROFILER_IMPORT);
                 }
             }
         } catch {

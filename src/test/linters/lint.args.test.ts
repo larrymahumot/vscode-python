@@ -20,7 +20,7 @@ import {
 } from '../../client/common/types';
 import {
     IInterpreterAutoSelectionService,
-    IInterpreterAutoSeletionProxyService,
+    IInterpreterAutoSelectionProxyService,
 } from '../../client/interpreter/autoSelection/types';
 import { IInterpreterService } from '../../client/interpreter/contracts';
 import { ServiceContainer } from '../../client/ioc/container';
@@ -71,7 +71,7 @@ suite('Linting - Arguments', () => {
 
                         const fs = TypeMoq.Mock.ofType<IFileSystem>();
                         fs.setup((x) => x.fileExists(TypeMoq.It.isAny())).returns(
-                            () => new Promise<boolean>((resolve, _reject) => resolve(true)),
+                            () => new Promise<boolean>((resolve) => resolve(true)),
                         );
                         fs.setup((x) => x.arePathsSame(TypeMoq.It.isAnyString(), TypeMoq.It.isAnyString())).returns(
                             () => true,
@@ -89,8 +89,8 @@ suite('Linting - Arguments', () => {
                             IInterpreterAutoSelectionService,
                             MockAutoSelectionService,
                         );
-                        serviceManager.addSingleton<IInterpreterAutoSeletionProxyService>(
-                            IInterpreterAutoSeletionProxyService,
+                        serviceManager.addSingleton<IInterpreterAutoSelectionProxyService>(
+                            IInterpreterAutoSelectionProxyService,
                             MockAutoSelectionService,
                         );
                         engine = TypeMoq.Mock.ofType<ILintingEngine>();
@@ -102,6 +102,7 @@ suite('Linting - Arguments', () => {
                         const lintSettings = TypeMoq.Mock.ofType<ILintingSettings>();
                         lintSettings.setup((x) => x.enabled).returns(() => true);
                         lintSettings.setup((x) => x.lintOnSave).returns(() => true);
+                        lintSettings.setup((x) => x.cwd).returns(() => undefined);
 
                         settings = TypeMoq.Mock.ofType<IPythonSettings>();
                         settings.setup((x) => x.linting).returns(() => lintSettings.object);
@@ -140,6 +141,7 @@ suite('Linting - Arguments', () => {
                         document.setup((d) => d.uri).returns(() => fileUri);
 
                         let invoked = false;
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         (linter as any).run = (args: string[]) => {
                             expect(args).to.deep.equal(expectedArgs);
                             invoked = true;
@@ -186,7 +188,8 @@ suite('Linting - Arguments', () => {
                         document.setup((d) => d.uri).returns(() => fileUri);
 
                         let invoked = false;
-                        (linter as any).run = (args: any[], _doc: any, _token: any) => {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        (linter as any).run = (args: any[]) => {
                             expect(args[args.length - 1]).to.equal(fileUri.fsPath);
                             invoked = true;
                             return Promise.resolve([]);
@@ -200,7 +203,7 @@ suite('Linting - Arguments', () => {
                             '-f',
                             'custom',
                             '--msg-template',
-                            '{line},0,{severity},{test_id}:{msg}',
+                            '{line},{col},{severity},{test_id}:{msg}',
                             '-n',
                             '-1',
                             fileUri.fsPath,

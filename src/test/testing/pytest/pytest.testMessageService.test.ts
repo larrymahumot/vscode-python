@@ -20,14 +20,19 @@ import { CondaService } from '../../../client/pythonEnvironments/discovery/locat
 import { TestDiscoveredTestParser } from '../../../client/testing/common/services/discoveredTestParser';
 import { TestResultsService } from '../../../client/testing/common/services/testResultsService';
 import { DiscoveredTests } from '../../../client/testing/common/services/types';
-import { ITestVisitor, TestDiscoveryOptions, Tests, TestStatus } from '../../../client/testing/common/types';
-import { XUnitParser } from '../../../client/testing/common/xUnitParser';
-import { TestMessageService } from '../../../client/testing/pytest/services/testMessageService';
 import {
+    FinalTestStatus,
     ILocationStackFrameDetails,
     IPythonTestMessage,
+    ITestNonPassingMessage,
+    ITestVisitor,
     PythonTestMessageSeverity,
-} from '../../../client/testing/types';
+    TestDiscoveryOptions,
+    Tests,
+    TestStatus,
+} from '../../../client/testing/common/types';
+import { XUnitParser } from '../../../client/testing/common/xUnitParser';
+import { TestMessageService } from '../../../client/testing/pytest/services/testMessageService';
 import { rootWorkspaceUri, updateSetting } from '../../common';
 import { initialize, initializeTest, IS_MULTI_ROOT_TEST } from '../../initialize';
 import { UnitTestIocContainer } from '../serviceRegistry';
@@ -44,18 +49,18 @@ const PYTEST_RESULTS_PATH = path.join(
     'results',
 );
 
-const filterdTestScenarios = testScenarios.filter((ts) => {
-    return !ts.shouldRunFailed;
-});
+const filterdTestScenarios = testScenarios.filter((ts) => !ts.shouldRunFailed);
 
 async function testMessageProperties(
     message: IPythonTestMessage,
     expectedMessage: IPythonTestMessage,
-    imported: boolean = false,
+    imported = false,
     status: TestStatus,
 ) {
+    const nonPassing = message as ITestNonPassingMessage;
+    const expectedNonPassing = expectedMessage as ITestNonPassingMessage;
     assert.equal(message.code, expectedMessage.code, 'IPythonTestMessage code');
-    assert.equal(message.message, expectedMessage.message, 'IPythonTestMessage message');
+    assert.equal(nonPassing.message, expectedNonPassing.message, 'IPythonTestMessage message');
     assert.equal(message.severity, expectedMessage.severity, 'IPythonTestMessage severity');
     assert.equal(message.provider, expectedMessage.provider, 'IPythonTestMessage provider');
     assert.isNumber(message.testTime, 'IPythonTestMessage testTime');
@@ -63,36 +68,36 @@ async function testMessageProperties(
     assert.equal(message.testFilePath, expectedMessage.testFilePath, 'IPythonTestMessage testFilePath');
     if (status !== TestStatus.Pass) {
         assert.equal(
-            message.locationStack![0].lineText,
-            expectedMessage.locationStack![0].lineText,
+            nonPassing.locationStack[0].lineText,
+            expectedNonPassing.locationStack[0].lineText,
             'IPythonTestMessage line text',
         );
         assert.equal(
-            message.locationStack![0].location.uri.fsPath,
-            expectedMessage.locationStack![0].location.uri.fsPath,
+            nonPassing.locationStack[0].location.uri.fsPath,
+            expectedNonPassing.locationStack[0].location.uri.fsPath,
             'IPythonTestMessage locationStack fsPath',
         );
         if (status !== TestStatus.Skipped) {
             assert.equal(
-                message.locationStack![1].lineText,
-                expectedMessage.locationStack![1].lineText,
+                nonPassing.locationStack[1].lineText,
+                expectedNonPassing.locationStack[1].lineText,
                 'IPythonTestMessage line text',
             );
             assert.equal(
-                message.locationStack![1].location.uri.fsPath,
-                expectedMessage.locationStack![1].location.uri.fsPath,
+                nonPassing.locationStack[1].location.uri.fsPath,
+                expectedNonPassing.locationStack[1].location.uri.fsPath,
                 'IPythonTestMessage locationStack fsPath',
             );
         }
         if (imported) {
             assert.equal(
-                message.locationStack![2].lineText,
-                expectedMessage.locationStack![2].lineText,
+                nonPassing.locationStack[2].lineText,
+                expectedNonPassing.locationStack[2].lineText,
                 'IPythonTestMessage imported line text',
             );
             assert.equal(
-                message.locationStack![2].location.uri.fsPath,
-                expectedMessage.locationStack![2].location.uri.fsPath,
+                nonPassing.locationStack[2].location.uri.fsPath,
+                expectedNonPassing.locationStack[2].location.uri.fsPath,
                 'IPythonTestMessage imported location fsPath',
             );
         }
@@ -147,7 +152,7 @@ suite('Unit Tests - PyTest - TestMessageService', () => {
         await initialize();
         await updateSetting('testing.pytestArgs', [], rootWorkspaceUri, configTarget);
     });
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerUnitTestTypes();
@@ -166,7 +171,7 @@ suite('Unit Tests - PyTest - TestMessageService', () => {
             let testMessages: IPythonTestMessage[];
             suiteSetup(async () => {
                 await initializeTest();
-                initializeDI();
+                await initializeDI();
                 // Setup the service container for use by the parser.
                 const testVisitor = typeMoq.Mock.ofType<ITestVisitor>();
                 const outChannel = typeMoq.Mock.ofType<vscode.OutputChannel>();
@@ -223,14 +228,15 @@ suite('Unit Tests - PyTest - TestMessageService', () => {
                         const expectedLocationStack = await getExpectedLocationStackFromTestDetails(td);
                         expectedMessage = {
                             code: td.nameToRun,
-                            message: td.message,
                             severity: expectedSeverity,
                             provider: ProductNames.get(Product.pytest)!,
                             testTime: 0,
-                            status: td.status,
-                            locationStack: expectedLocationStack,
+                            status: td.status as FinalTestStatus,
                             testFilePath: path.join(UNITTEST_TEST_FILES_PATH, td.fileName),
-                        };
+                            // These are non-passing properties only:
+                            message: td.message,
+                            locationStack: expectedLocationStack,
+                        } as IPythonTestMessage;
                         testMessage = testMessages.find((tm) => tm.code === td.nameToRun)!;
                     });
                     test('Message', async () => {

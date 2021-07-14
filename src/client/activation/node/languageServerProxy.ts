@@ -13,21 +13,16 @@ import {
 
 import { DeprecatePythonPath } from '../../common/experiments/groups';
 import { traceDecorators, traceError } from '../../common/logger';
-import {
-    IConfigurationService,
-    IExperimentService,
-    IExperimentsManager,
-    IInterpreterPathService,
-    Resource,
-} from '../../common/types';
+import { IConfigurationService, IExperimentService, IInterpreterPathService, Resource } from '../../common/types';
 import { createDeferred, Deferred, sleep } from '../../common/utils/async';
 import { swallowExceptions } from '../../common/utils/decorators';
 import { noop } from '../../common/utils/misc';
+import { IEnvironmentVariablesProvider } from '../../common/variables/types';
 import { LanguageServerSymbolProvider } from '../../providers/symbolProvider';
 import { PythonEnvironment } from '../../pythonEnvironments/info';
 import { captureTelemetry, sendTelemetryEvent } from '../../telemetry';
 import { EventName } from '../../telemetry/constants';
-import { ITestManagementService } from '../../testing/types';
+import { ITestingService } from '../../testing/types';
 import { FileBasedCancellationStrategy } from '../common/cancellationUtils';
 import { ProgressReporting } from '../progress';
 import { ILanguageClientFactory, ILanguageServerFolderService, ILanguageServerProxy } from '../types';
@@ -67,12 +62,12 @@ export class NodeLanguageServerProxy implements ILanguageServerProxy {
 
     constructor(
         @inject(ILanguageClientFactory) private readonly factory: ILanguageClientFactory,
-        @inject(ITestManagementService) private readonly testManager: ITestManagementService,
+        @inject(ITestingService) private readonly testManager: ITestingService,
         @inject(IConfigurationService) private readonly configurationService: IConfigurationService,
         @inject(ILanguageServerFolderService) private readonly folderService: ILanguageServerFolderService,
-        @inject(IExperimentsManager) private readonly experiments: IExperimentsManager,
         @inject(IExperimentService) private readonly experimentService: IExperimentService,
         @inject(IInterpreterPathService) private readonly interpreterPathService: IInterpreterPathService,
+        @inject(IEnvironmentVariablesProvider) private readonly environmentService: IEnvironmentVariablesProvider,
     ) {
         this.startupCompleted = createDeferred<void>();
     }
@@ -186,7 +181,7 @@ export class NodeLanguageServerProxy implements ILanguageServerProxy {
         const progressReporting = new ProgressReporting(this.languageClient!);
         this.disposables.push(progressReporting);
 
-        if (this.experiments.inExperiment(DeprecatePythonPath.experiment)) {
+        if (this.experimentService.inExperimentSync(DeprecatePythonPath.experiment)) {
             this.disposables.push(
                 this.interpreterPathService.onDidChange(() => {
                     // Manually send didChangeConfiguration in order to get the server to requery
@@ -199,6 +194,14 @@ export class NodeLanguageServerProxy implements ILanguageServerProxy {
                 }),
             );
         }
+
+        this.disposables.push(
+            this.environmentService.onDidEnvironmentVariablesChange(() => {
+                this.languageClient!.sendNotification(DidChangeConfigurationNotification.type, {
+                    settings: null,
+                });
+            }),
+        );
 
         const settings = this.configurationService.getSettings(resource);
         if (settings.downloadLanguageServer) {

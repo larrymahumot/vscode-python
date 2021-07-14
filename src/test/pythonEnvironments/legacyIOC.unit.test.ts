@@ -3,7 +3,11 @@
 
 'use strict';
 
-import { instance, mock, verify } from 'ts-mockito';
+import { instance, mock, verify, when } from 'ts-mockito';
+import { IExtensionSingleActivationService } from '../../client/activation/types';
+import { DiscoveryVariants } from '../../client/common/experiments/groups';
+import { ExperimentService } from '../../client/common/experiments/service';
+import { IExperimentService } from '../../client/common/types';
 import {
     CONDA_ENV_FILE_SERVICE,
     CONDA_ENV_SERVICE,
@@ -24,7 +28,11 @@ import {
     WORKSPACE_VIRTUAL_ENV_SERVICE,
 } from '../../client/interpreter/contracts';
 import { IPipEnvServiceHelper, IPythonInPathCommandProvider } from '../../client/interpreter/locators/types';
+import { VirtualEnvironmentManager } from '../../client/interpreter/virtualEnvs';
+import { IVirtualEnvironmentManager } from '../../client/interpreter/virtualEnvs/types';
+import { ServiceContainer } from '../../client/ioc/container';
 import { ServiceManager } from '../../client/ioc/serviceManager';
+import { initializeExternalDependencies } from '../../client/pythonEnvironments/common/externalDependencies';
 import { PythonInterpreterLocatorService } from '../../client/pythonEnvironments/discovery/locators';
 import { InterpreterLocatorHelper } from '../../client/pythonEnvironments/discovery/locators/helpers';
 import { InterpreterLocatorProgressService } from '../../client/pythonEnvironments/discovery/locators/progressService';
@@ -39,8 +47,6 @@ import {
     GlobalVirtualEnvironmentsSearchPathProvider,
     GlobalVirtualEnvService,
 } from '../../client/pythonEnvironments/discovery/locators/services/globalVirtualEnvService';
-import { InterpreterHashProvider } from '../../client/pythonEnvironments/discovery/locators/services/hashProvider';
-import { InterpeterHashProviderFactory } from '../../client/pythonEnvironments/discovery/locators/services/hashProviderFactory';
 import { InterpreterWatcherBuilder } from '../../client/pythonEnvironments/discovery/locators/services/interpreterWatcherBuilder';
 import {
     KnownPathsService,
@@ -49,7 +55,6 @@ import {
 import { PipEnvService } from '../../client/pythonEnvironments/discovery/locators/services/pipEnvService';
 import { PipEnvServiceHelper } from '../../client/pythonEnvironments/discovery/locators/services/pipEnvServiceHelper';
 import { WindowsRegistryService } from '../../client/pythonEnvironments/discovery/locators/services/windowsRegistryService';
-import { WindowsStoreInterpreter } from '../../client/pythonEnvironments/discovery/locators/services/windowsStoreInterpreter';
 import {
     WorkspaceVirtualEnvironmentsSearchPathProvider,
     WorkspaceVirtualEnvService,
@@ -58,80 +63,138 @@ import { WorkspaceVirtualEnvWatcherService } from '../../client/pythonEnvironmen
 import { registerLegacyDiscoveryForIOC } from '../../client/pythonEnvironments/legacyIOC';
 
 suite('Interpreters - Service Registry', () => {
-    test('Registrations', () => {
+    test('Registrations', async () => {
         const serviceManager = mock(ServiceManager);
-        registerLegacyDiscoveryForIOC(instance(serviceManager));
-        verify(serviceManager.addSingleton(IKnownSearchPathsForInterpreters, KnownSearchPathsForInterpreters)).once();
+        const serviceContainer = mock(ServiceContainer);
+        const experimentService = mock(ExperimentService);
+
+        when(serviceContainer.get<IExperimentService>(IExperimentService)).thenReturn(instance(experimentService));
+        when(experimentService.inExperiment(DiscoveryVariants.discoverWithFileWatching)).thenResolve(false);
+        when(experimentService.inExperiment(DiscoveryVariants.discoveryWithoutFileWatching)).thenResolve(false);
+
+        initializeExternalDependencies(instance(serviceContainer));
+        await registerLegacyDiscoveryForIOC(instance(serviceManager));
+
         verify(
-            serviceManager.addSingleton(
-                IVirtualEnvironmentsSearchPathProvider,
-                GlobalVirtualEnvironmentsSearchPathProvider,
-                'global',
-            ),
+            serviceManager.addSingleton<IInterpreterLocatorHelper>(IInterpreterLocatorHelper, InterpreterLocatorHelper),
         ).once();
         verify(
-            serviceManager.addSingleton(
-                IVirtualEnvironmentsSearchPathProvider,
-                WorkspaceVirtualEnvironmentsSearchPathProvider,
-                'workspace',
-            ),
-        ).once();
-
-        verify(serviceManager.addSingleton(ICondaService, CondaService)).once();
-        verify(serviceManager.addSingleton(IPipEnvServiceHelper, PipEnvServiceHelper)).once();
-        verify(serviceManager.addSingleton(IPythonInPathCommandProvider, PythonInPathCommandProvider)).once();
-
-        verify(serviceManager.addSingleton(IInterpreterWatcherBuilder, InterpreterWatcherBuilder)).once();
-
-        verify(
-            serviceManager.addSingleton(
+            serviceManager.addSingleton<IInterpreterLocatorService>(
                 IInterpreterLocatorService,
                 PythonInterpreterLocatorService,
                 INTERPRETER_LOCATOR_SERVICE,
             ),
         ).once();
         verify(
-            serviceManager.addSingleton(IInterpreterLocatorService, CondaEnvFileService, CONDA_ENV_FILE_SERVICE),
+            serviceManager.addSingleton<IInterpreterLocatorService>(
+                IInterpreterLocatorService,
+                CondaEnvFileService,
+                CONDA_ENV_FILE_SERVICE,
+            ),
         ).once();
-        verify(serviceManager.addSingleton(IInterpreterLocatorService, CondaEnvService, CONDA_ENV_SERVICE)).once();
         verify(
-            serviceManager.addSingleton(IInterpreterLocatorService, CurrentPathService, CURRENT_PATH_SERVICE),
+            serviceManager.addSingleton<IVirtualEnvironmentManager>(
+                IVirtualEnvironmentManager,
+                VirtualEnvironmentManager,
+            ),
         ).once();
         verify(
-            serviceManager.addSingleton(
+            serviceManager.addSingleton<IInterpreterLocatorService>(
+                IInterpreterLocatorService,
+                CondaEnvService,
+                CONDA_ENV_SERVICE,
+            ),
+        ).once();
+        verify(
+            serviceManager.addSingleton<IInterpreterLocatorService>(
                 IInterpreterLocatorService,
                 GlobalVirtualEnvService,
                 GLOBAL_VIRTUAL_ENV_SERVICE,
             ),
         ).once();
         verify(
-            serviceManager.addSingleton(
+            serviceManager.addSingleton<IVirtualEnvironmentsSearchPathProvider>(
+                IVirtualEnvironmentsSearchPathProvider,
+                GlobalVirtualEnvironmentsSearchPathProvider,
+                'global',
+            ),
+        ).once();
+        verify(
+            serviceManager.addSingleton<IInterpreterLocatorService>(
+                IInterpreterLocatorService,
+                KnownPathsService,
+                KNOWN_PATH_SERVICE,
+            ),
+        ).once();
+        verify(
+            serviceManager.addSingleton<IKnownSearchPathsForInterpreters>(
+                IKnownSearchPathsForInterpreters,
+                KnownSearchPathsForInterpreters,
+            ),
+        ).once();
+        verify(
+            serviceManager.addSingleton<IInterpreterLocatorProgressService>(
+                IInterpreterLocatorProgressService,
+                InterpreterLocatorProgressService,
+            ),
+        ).once();
+        verify(serviceManager.addBinding(IInterpreterLocatorProgressService, IExtensionSingleActivationService)).once();
+        verify(
+            serviceManager.addSingleton<IInterpreterLocatorService>(
+                IInterpreterLocatorService,
+                CurrentPathService,
+                CURRENT_PATH_SERVICE,
+            ),
+        ).once();
+        verify(
+            serviceManager.addSingleton<IPythonInPathCommandProvider>(
+                IPythonInPathCommandProvider,
+                PythonInPathCommandProvider,
+            ),
+        ).once();
+        verify(
+            serviceManager.addSingleton<IInterpreterLocatorService>(
                 IInterpreterLocatorService,
                 WorkspaceVirtualEnvService,
                 WORKSPACE_VIRTUAL_ENV_SERVICE,
             ),
         ).once();
-        verify(serviceManager.addSingleton(IInterpreterLocatorService, PipEnvService, PIPENV_SERVICE)).once();
-
         verify(
-            serviceManager.addSingleton(IInterpreterLocatorService, WindowsRegistryService, WINDOWS_REGISTRY_SERVICE),
-        ).once();
-        verify(serviceManager.addSingleton(IInterpreterLocatorService, KnownPathsService, KNOWN_PATH_SERVICE)).once();
-
-        verify(serviceManager.addSingleton(IInterpreterLocatorHelper, InterpreterLocatorHelper)).once();
-        verify(
-            serviceManager.addSingleton(IInterpreterLocatorProgressService, InterpreterLocatorProgressService),
+            serviceManager.addSingleton<IInterpreterLocatorService>(
+                IInterpreterLocatorService,
+                PipEnvService,
+                PIPENV_SERVICE,
+            ),
         ).once();
 
-        verify(serviceManager.addSingleton(WindowsStoreInterpreter, WindowsStoreInterpreter)).once();
-        verify(serviceManager.addSingleton(InterpreterHashProvider, InterpreterHashProvider)).once();
-        verify(serviceManager.addSingleton(InterpeterHashProviderFactory, InterpeterHashProviderFactory)).once();
+        verify(
+            serviceManager.addSingleton<IInterpreterLocatorService>(
+                IInterpreterLocatorService,
+                WindowsRegistryService,
+                WINDOWS_REGISTRY_SERVICE,
+            ),
+        ).once();
+        verify(serviceManager.addSingleton<ICondaService>(ICondaService, CondaService)).once();
+        verify(serviceManager.addSingleton<IPipEnvServiceHelper>(IPipEnvServiceHelper, PipEnvServiceHelper)).once();
 
         verify(
             serviceManager.add<IInterpreterWatcher>(
                 IInterpreterWatcher,
                 WorkspaceVirtualEnvWatcherService,
                 WORKSPACE_VIRTUAL_ENV_SERVICE,
+            ),
+        ).once();
+        verify(
+            serviceManager.addSingleton<IVirtualEnvironmentsSearchPathProvider>(
+                IVirtualEnvironmentsSearchPathProvider,
+                WorkspaceVirtualEnvironmentsSearchPathProvider,
+                'workspace',
+            ),
+        ).once();
+        verify(
+            serviceManager.addSingleton<IInterpreterWatcherBuilder>(
+                IInterpreterWatcherBuilder,
+                InterpreterWatcherBuilder,
             ),
         ).once();
     });

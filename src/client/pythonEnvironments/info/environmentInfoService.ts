@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import { traceVerbose } from '../../common/logger';
+import { IDisposableRegistry } from '../../common/types';
 import { createDeferred, Deferred } from '../../common/utils/async';
 import { createRunningWorkerPool, IWorkerPool, QueuePosition } from '../../common/utils/workerPool';
 import { getInterpreterInfo, InterpreterInformation } from '../base/info/interpreter';
-import { shellExecute } from '../common/externalDependencies';
 import { buildPythonExecInfo } from '../exec';
 
 export enum EnvironmentInfoServiceQueuePriority {
@@ -21,16 +22,18 @@ export interface IEnvironmentInfoService {
 }
 
 async function buildEnvironmentInfo(interpreterPath: string): Promise<InterpreterInformation | undefined> {
-    const interpreterInfo = await getInterpreterInfo(buildPythonExecInfo(interpreterPath), shellExecute).catch(
-        () => undefined,
-    );
+    const interpreterInfo = await getInterpreterInfo(buildPythonExecInfo(interpreterPath)).catch((reason) => {
+        traceVerbose(reason);
+        return undefined;
+    });
+
     if (interpreterInfo === undefined || interpreterInfo.version === undefined) {
         return undefined;
     }
     return interpreterInfo;
 }
 
-export class EnvironmentInfoService implements IEnvironmentInfoService {
+class EnvironmentInfoService implements IEnvironmentInfoService {
     // Caching environment here in-memory. This is so that we don't have to run this on the same
     // path again and again in a given session. This information will likely not change in a given
     // session. There are definitely cases where this will change. But a simple reload should address
@@ -81,4 +84,19 @@ export class EnvironmentInfoService implements IEnvironmentInfoService {
         const result = this.cache.get(interpreterPath);
         return !!(result && result.completed);
     }
+}
+
+let envInfoService: IEnvironmentInfoService | undefined;
+export function getEnvironmentInfoService(disposables?: IDisposableRegistry): IEnvironmentInfoService {
+    if (envInfoService === undefined) {
+        const service = new EnvironmentInfoService();
+        disposables?.push({
+            dispose: () => {
+                service.dispose();
+                envInfoService = undefined;
+            },
+        });
+        envInfoService = service;
+    }
+    return envInfoService;
 }

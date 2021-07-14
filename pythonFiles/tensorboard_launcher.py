@@ -1,15 +1,25 @@
-import os
 import time
 import sys
-import tensorboard
+import os
+import mimetypes
+from tensorboard import program
 
 
 def main(logdir):
-    tb = tensorboard.program.TensorBoard()
+    # Environment variable for PyTorch profiler TensorBoard plugin
+    # to detect when it's running inside VS Code
+    os.environ["VSCODE_TENSORBOARD_LAUNCH"] = "1"
+
+    # Work around incorrectly configured MIME types on Windows
+    mimetypes.add_type("application/javascript", ".js")
+
+    # Start TensorBoard using their Python API
+    tb = program.TensorBoard()
     tb.configure(bind_all=False, logdir=logdir)
     url = tb.launch()
     sys.stdout.write("TensorBoard started at %s\n" % (url))
     sys.stdout.flush()
+
     while True:
         try:
             time.sleep(60)

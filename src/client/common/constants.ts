@@ -1,23 +1,34 @@
+/* eslint-disable camelcase */
+/* eslint-disable @typescript-eslint/no-namespace */
 export const PYTHON_LANGUAGE = 'python';
-export const MARKDOWN_LANGUAGE = 'markdown';
-export const JUPYTER_LANGUAGE = 'jupyter';
-
 export const PYTHON_WARNINGS = 'PYTHONWARNINGS';
 
 export const NotebookCellScheme = 'vscode-notebook-cell';
+export const InteractiveInputScheme = 'vscode-interactive-input';
+export const InteractiveScheme = 'vscode-interactive';
 export const PYTHON = [
     { scheme: 'file', language: PYTHON_LANGUAGE },
     { scheme: 'untitled', language: PYTHON_LANGUAGE },
     { scheme: 'vscode-notebook', language: PYTHON_LANGUAGE },
     { scheme: NotebookCellScheme, language: PYTHON_LANGUAGE },
+    { scheme: InteractiveInputScheme, language: PYTHON_LANGUAGE },
 ];
-export const PYTHON_ALLFILES = [{ language: PYTHON_LANGUAGE }];
 
 export const PVSC_EXTENSION_ID = 'ms-python.python';
 export const CODE_RUNNER_EXTENSION_ID = 'formulahendry.code-runner';
 export const PYLANCE_EXTENSION_ID = 'ms-python.vscode-pylance';
 export const JUPYTER_EXTENSION_ID = 'ms-toolsai.jupyter';
 export const AppinsightsKey = 'AIF-d9b70cd4-b9f9-4d70-929b-a071c400b217';
+
+export type Channel = 'stable' | 'insiders';
+
+export enum CommandSource {
+    auto = 'auto',
+    ui = 'ui',
+    codelens = 'codelens',
+    commandPalette = 'commandpalette',
+    testExplorer = 'testExplorer',
+}
 
 export namespace Commands {
     export const Set_Interpreter = 'python.setInterpreter';
@@ -67,11 +78,15 @@ export namespace Commands {
     export const SwitchToInsidersWeekly = 'python.switchToWeeklyChannel';
     export const PickLocalProcess = 'python.pickLocalProcess';
     export const GetSelectedInterpreterPath = 'python.interpreterPath';
+    export const ClearStorage = 'python.clearPersistentStorage';
     export const ClearWorkspaceInterpreter = 'python.clearWorkspaceInterpreter';
-    export const ResetInterpreterSecurityStorage = 'python.resetInterpreterSecurityStorage';
     export const OpenStartPage = 'python.startPage.open';
     export const LaunchTensorBoard = 'python.launchTensorBoard';
+    export const RefreshTensorBoard = 'python.refreshTensorBoard';
+    export const ReportIssue = 'python.reportIssue';
 }
+
+// Look at https://microsoft.github.io/vscode-codicons/dist/codicon.html for other Octicon icon ids
 export namespace Octicons {
     export const Test_Pass = '$(check)';
     export const Test_Fail = '$(alert)';
@@ -79,6 +94,8 @@ export namespace Octicons {
     export const Test_Skip = '$(circle-slash)';
     export const Downloading = '$(cloud-download)';
     export const Installing = '$(desktop-download)';
+    export const Search_Stop = '$(search-stop)';
+    export const Star = '$(star)';
 }
 
 export const Button_Text_Tests_View_Output = 'View Output';
@@ -114,7 +131,6 @@ export function isUnitTestExecution(): boolean {
 
 // Temporary constant, used to indicate whether we're using custom editor api or not.
 export const UseCustomEditorApi = Symbol('USE_CUSTOM_EDITOR');
-export const UseVSCodeNotebookEditorApi = Symbol('USE_NATIVEEDITOR');
 export const UseProposedApi = Symbol('USE_VSC_PROPOSED_API');
 
 export * from '../constants';

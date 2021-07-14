@@ -43,63 +43,80 @@ suite('TensorBoard file system watcher', async () => {
             await fse.unlink(eventFile);
             eventFile = undefined;
         }
+    });
+
+    suiteTeardown(async () => {
         if (eventFileDirectory && eventFileDirectory !== currentDirectory) {
             await fse.rmdir(eventFileDirectory);
             eventFileDirectory = undefined;
         }
     });
 
-    test('Preexisting tfeventfile in workspace root results in prompt being shown', async function () {
+    test('Preexisting tfeventfile in workspace root results in prompt being shown', async () => {
         await createFiles(currentDirectory);
         await configureStubsAndActivate();
         assert.ok(showNativeTensorBoardPrompt.called);
     });
 
-    test('Preexisting tfeventfile one directory down results in prompt being shown', async function () {
+    test('Preexisting tfeventfile one directory down results in prompt being shown', async () => {
         const dir1 = path.join(currentDirectory, '1');
         await createFiles(dir1);
         await configureStubsAndActivate();
         assert.ok(showNativeTensorBoardPrompt.called);
     });
 
-    test('Preexisting tfeventfile two directories down does not result in prompt being called', async function () {
+    test('Preexisting tfeventfile two directories down results in prompt being called', async () => {
         const dir2 = path.join(currentDirectory, '1', '2');
         await createFiles(dir2);
+        await configureStubsAndActivate();
+        assert.ok(showNativeTensorBoardPrompt.called);
+    });
+
+    test('Preexisting tfeventfile three directories down does not result in prompt being called', async () => {
+        const dir3 = path.join(currentDirectory, '1', '2', '3');
+        await createFiles(dir3);
         await configureStubsAndActivate();
         assert.ok(showNativeTensorBoardPrompt.notCalled);
     });
 
-    test('Creating tfeventfile in workspace root results in prompt being shown', async function () {
+    test('Creating tfeventfile in workspace root results in prompt being shown', async () => {
         await configureStubsAndActivate();
         await createFiles(currentDirectory);
-        waitForCondition(async () => showNativeTensorBoardPrompt.called, 5000, 'Prompt not shown');
+        await waitForCondition(async () => showNativeTensorBoardPrompt.called, 5000, 'Prompt not shown');
     });
 
-    test('Creating tfeventfile one directory down results in prompt being shown', async function () {
+    test('Creating tfeventfile one directory down results in prompt being shown', async () => {
         const dir1 = path.join(currentDirectory, '1');
         await configureStubsAndActivate();
         await createFiles(dir1);
-        waitForCondition(async () => showNativeTensorBoardPrompt.called, 5000, 'Prompt not shown');
+        await waitForCondition(async () => showNativeTensorBoardPrompt.called, 5000, 'Prompt not shown');
     });
 
-    test('Creating tfeventfile two directories down does not result in prompt being called', async function () {
+    test('Creating tfeventfile two directories down results in prompt being called', async () => {
         const dir2 = path.join(currentDirectory, '1', '2');
         await configureStubsAndActivate();
         await createFiles(dir2);
-        assert.ok(showNativeTensorBoardPrompt.notCalled);
+        await waitForCondition(async () => showNativeTensorBoardPrompt.called, 5000, 'Prompt not shown');
     });
 
-    test('No workspace folder open, prompt is not called', async function () {
+    test('Creating tfeventfile three directories down does not result in prompt being called', async () => {
+        const dir3 = path.join(currentDirectory, '1', '2', '3');
+        await configureStubsAndActivate();
+        await createFiles(dir3);
+        await waitForCondition(async () => showNativeTensorBoardPrompt.notCalled, 5000, 'Prompt shown');
+    });
+
+    test('No workspace folder open, prompt is not called', async () => {
         const { serviceManager } = await initialize();
 
         // Stub the prompt show method so we can verify that it was called
         const prompt = serviceManager.get<TensorBoardPrompt>(TensorBoardPrompt);
-        showNativeTensorBoardPrompt = sinon.stub(prompt, 'showNativeTensorBoardPrompt');
+        showNativeTensorBoardPrompt = sandbox.stub(prompt, 'showNativeTensorBoardPrompt');
         serviceManager.rebindInstance(TensorBoardPrompt, prompt);
 
         // Pretend there are no open folders
         const workspaceService = serviceManager.get<IWorkspaceService>(IWorkspaceService);
-        sinon.stub(workspaceService, 'workspaceFolders').get(() => undefined);
+        sandbox.stub(workspaceService, 'workspaceFolders').get(() => undefined);
         serviceManager.rebindInstance(IWorkspaceService, workspaceService);
         const fileWatcher = serviceManager.get<TensorBoardFileWatcher>(TensorBoardFileWatcher);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

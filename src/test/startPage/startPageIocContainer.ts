@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/* eslint-disable max-classes-per-file */
+
+// eslint-disable-next-line camelcase
 import * as child_process from 'child_process';
 import { ReactWrapper } from 'enzyme';
 import * as fs from 'fs-extra';
@@ -15,6 +18,7 @@ import {
     ConfigurationChangeEvent,
     Disposable,
     EventEmitter,
+    ExtensionContext,
     FileSystemWatcher,
     Uri,
     WorkspaceFolder,
@@ -29,6 +33,7 @@ import {
     IApplicationShell,
     ICommandManager,
     IDocumentManager,
+    IJupyterExtensionDependencyManager,
     IWebviewPanelOptions,
     IWebviewPanelProvider,
     IWorkspaceService,
@@ -38,11 +43,11 @@ import { WorkspaceService } from '../../client/common/application/workspace';
 import { AsyncDisposableRegistry } from '../../client/common/asyncDisposableRegistry';
 import { PythonSettings } from '../../client/common/configSettings';
 import { EXTENSION_ROOT_DIR } from '../../client/common/constants';
-import { ExperimentsManager } from '../../client/common/experiments/manager';
 import { ExperimentService } from '../../client/common/experiments/service';
 import { InstallationChannelManager } from '../../client/common/installer/channelManager';
 import { IInstallationChannelManager } from '../../client/common/installer/types';
 import { HttpClient } from '../../client/common/net/httpClient';
+import { PersistentStateFactory } from '../../client/common/persistentState';
 import { IS_WINDOWS } from '../../client/common/platform/constants';
 import { FileSystem } from '../../client/common/platform/fileSystem';
 import { PathUtils } from '../../client/common/platform/pathUtils';
@@ -61,6 +66,7 @@ import {
     IExtensions,
     IHttpClient,
     IPathUtils,
+    IPersistentStateFactory,
     IPythonSettings,
     IsWindows,
     Resource,
@@ -69,6 +75,9 @@ import { sleep } from '../../client/common/utils/async';
 import { noop } from '../../client/common/utils/misc';
 
 import { EnvironmentActivationServiceCache } from '../../client/interpreter/activation/service';
+import { JupyterExtensionDependencyManager } from '../../client/jupyter/jupyterExtensionDependencyManager';
+import { JupyterNotInstalledNotificationHelper } from '../../client/jupyter/jupyterNotInstalledNotificationHelper';
+import { IJupyterNotInstalledNotificationHelper } from '../../client/jupyter/types';
 
 import { CacheableLocatorPromiseCache } from '../../client/pythonEnvironments/discovery/locators/services/cacheableLocatorService';
 import { MockAutoSelectionService } from '../mocks/autoSelector';
@@ -94,7 +103,7 @@ export class StartPageIocContainer extends UnitTestIocContainer {
 
     private webPanelProvider = mock(WebviewPanelProvider);
 
-    private settingsMap = new Map<string, any>();
+    private settingsMap = new Map<string, unknown>();
 
     private experimentState = new Map<string, boolean>();
 
@@ -160,6 +169,7 @@ export class StartPageIocContainer extends UnitTestIocContainer {
         if (!this.uiTest) {
             // Blur window focus so we don't have editors polling
 
+            // eslint-disable-next-line global-require
             const reactHelpers = require('./reactHelpers') as typeof import('./reactHelpers');
             reactHelpers.blurWindow();
         }
@@ -178,7 +188,7 @@ export class StartPageIocContainer extends UnitTestIocContainer {
         EnvironmentActivationServiceCache.forceUseNormal();
     }
 
-    public registerStartPageTypes() {
+    public registerStartPageTypes(): void {
         this.defaultPythonPath = this.findPythonPath();
 
         this.serviceManager.addSingletonInstance<StartPageIocContainer>(StartPageIocContainer, this);
@@ -192,6 +202,7 @@ export class StartPageIocContainer extends UnitTestIocContainer {
         // Create the workspace service first as it's used to set config values.
         this.createWorkspaceService();
 
+        // eslint-disable-next-line global-require
         const reactHelpers = require('./reactHelpers') as typeof import('./reactHelpers');
         reactHelpers.setUpDomEnvironment();
 
@@ -249,14 +260,27 @@ export class StartPageIocContainer extends UnitTestIocContainer {
 
         this.serviceManager.add<IInstallationChannelManager>(IInstallationChannelManager, InstallationChannelManager);
 
+        // "Jupyter is not installed" prompt.
+        this.serviceManager.addSingleton<IPersistentStateFactory>(IPersistentStateFactory, PersistentStateFactory);
+        this.serviceManager.addSingleton<IJupyterExtensionDependencyManager>(
+            IJupyterExtensionDependencyManager,
+            JupyterExtensionDependencyManager,
+        );
+        this.serviceManager.addSingleton<IJupyterNotInstalledNotificationHelper>(
+            IJupyterNotInstalledNotificationHelper,
+            JupyterNotInstalledNotificationHelper,
+        );
+
+        const mockMemento = TypeMoq.Mock.ofType<ExtensionContext['globalState']>();
         const mockExtensionContext = TypeMoq.Mock.ofType<IExtensionContext>();
+        mockExtensionContext.setup((m) => m.globalState).returns(() => mockMemento.object);
         mockExtensionContext.setup((m) => m.globalStoragePath).returns(() => os.tmpdir());
         mockExtensionContext.setup((m) => m.extensionPath).returns(() => this.extensionRootPath || os.tmpdir());
         this.serviceManager.addSingletonInstance<IExtensionContext>(IExtensionContext, mockExtensionContext.object);
 
         // Turn off experiments.
-        const experimentManager = mock(ExperimentsManager);
-        when(experimentManager.inExperiment(anything())).thenCall((exp) => {
+        const experimentManager = mock(ExperimentService);
+        when(experimentManager.inExperimentSync(anything())).thenCall((exp) => {
             const setState = this.experimentState.get(exp);
             if (setState === undefined) {
                 // All experiments to true by default if not mocking jupyter
@@ -266,7 +290,10 @@ export class StartPageIocContainer extends UnitTestIocContainer {
         });
     }
 
-    public createWebView(mount: () => ReactWrapper<any, Readonly<{}>, React.Component>, id: string) {
+    public createWebView(
+        mount: () => ReactWrapper<unknown, Readonly<unknown>, React.Component>,
+        id: string,
+    ): IMountedWebView {
         // We need to mount the react control before we even create an interactive window object. Otherwise the mount will miss rendering some parts
         this.pendingWebPanel = this.get<IMountedWebViewFactory>(IMountedWebViewFactory).create(id, mount);
         return this.pendingWebPanel;
@@ -291,7 +318,7 @@ export class StartPageIocContainer extends UnitTestIocContainer {
         } else if (this.disposed) {
             setting = this.generatePythonSettings(this.languageServerType);
         }
-        return setting;
+        return setting as IPythonSettings;
     }
 
     public getWorkspaceConfig(section: string | undefined, resource?: Resource): MockWorkspaceConfiguration {
@@ -307,7 +334,7 @@ export class StartPageIocContainer extends UnitTestIocContainer {
         return result;
     }
 
-    public addWorkspaceFolder(folderPath: string) {
+    public addWorkspaceFolder(folderPath: string): MockWorkspaceFolder {
         const workspaceFolder = new MockWorkspaceFolder(folderPath, this.workspaceFolders.length);
         this.workspaceFolders.push(workspaceFolder);
         return workspaceFolder;
@@ -330,15 +357,30 @@ export class StartPageIocContainer extends UnitTestIocContainer {
 
             public ignoreDeleteEvents = false;
 
-            public onDidChange(_listener: (e: Uri) => any, _thisArgs?: any, _disposables?: Disposable[]): Disposable {
+            // eslint-disable-next-line class-methods-use-this
+            public onDidChange(
+                _listener: (e: Uri) => unknown,
+                _thisArgs?: unknown,
+                _disposables?: Disposable[],
+            ): Disposable {
                 return { dispose: noop };
             }
 
-            public onDidDelete(_listener: (e: Uri) => any, _thisArgs?: any, _disposables?: Disposable[]): Disposable {
+            // eslint-disable-next-line class-methods-use-this
+            public onDidDelete(
+                _listener: (e: Uri) => unknown,
+                _thisArgs?: unknown,
+                _disposables?: Disposable[],
+            ): Disposable {
                 return { dispose: noop };
             }
 
-            public onDidCreate(_listener: (e: Uri) => any, _thisArgs?: any, _disposables?: Disposable[]): Disposable {
+            // eslint-disable-next-line class-methods-use-this
+            public onDidCreate(
+                _listener: (e: Uri) => unknown,
+                _thisArgs?: unknown,
+                _disposables?: Disposable[],
+            ): Disposable {
                 return { dispose: noop };
             }
 
@@ -410,6 +452,7 @@ export class StartPageIocContainer extends UnitTestIocContainer {
         return undefined;
     }
 
+    // eslint-disable-next-line class-methods-use-this
     private findPythonPath(): string {
         try {
             // Use a static variable so we don't have to recompute this on subsequenttests

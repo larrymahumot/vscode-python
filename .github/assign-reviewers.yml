@@ -4,18 +4,17 @@ numberOfReviewers: 2
 # determine if a PR author is an external contributor.
 team:
   - brettcannon
-  - ericsnowcurrently
   - int19h
   - karthiknadig
   - karrtikr
   - kimadeline
   - luabud
+  - paulacamargo25
 
 # Comment yourself out when you will be unavailable for reviews for more than a
 # couple of days.
 reviewers:
-  - ericsnowcurrently
-  - int19h
   - karthiknadig
   - karrtikr
   - kimadeline
+  - paulacamargo25

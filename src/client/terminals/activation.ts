@@ -5,42 +5,17 @@
 
 import { inject, injectable } from 'inversify';
 import { Terminal } from 'vscode';
-import { IExtensionSingleActivationService } from '../activation/types';
-import { IActiveResourceService, ICommandManager, ITerminalManager } from '../common/application/types';
-import { CODE_RUNNER_EXTENSION_ID } from '../common/constants';
+import { IActiveResourceService, ITerminalManager } from '../common/application/types';
 import { ITerminalActivator } from '../common/terminal/types';
-import { IDisposable, IDisposableRegistry, IExtensions } from '../common/types';
-import { noop } from '../common/utils/misc';
-import { sendTelemetryEvent } from '../telemetry';
-import { EventName } from '../telemetry/constants';
+import { IDisposable, IDisposableRegistry } from '../common/types';
 import { ITerminalAutoActivation } from './types';
-
-@injectable()
-export class ExtensionActivationForTerminalActivation implements IExtensionSingleActivationService {
-    constructor(
-        @inject(ICommandManager) private commands: ICommandManager,
-        @inject(IExtensions) private extensions: IExtensions,
-        @inject(IDisposableRegistry) disposables: IDisposable[],
-    ) {
-        disposables.push(this.extensions.onDidChange(this.activate.bind(this)));
-    }
-
-    public async activate(): Promise<void> {
-        const isInstalled = this.isCodeRunnerInstalled();
-        // Hide the play icon if code runner is installed, otherwise display the play icon.
-        this.commands.executeCommand('setContext', 'python.showPlayIcon', !isInstalled).then(noop, noop);
-        sendTelemetryEvent(EventName.PLAY_BUTTON_ICON_DISABLED, undefined, { disabled: isInstalled });
-    }
-
-    private isCodeRunnerInstalled(): boolean {
-        const extension = this.extensions.getExtension(CODE_RUNNER_EXTENSION_ID)!;
-        return extension === undefined ? false : true;
-    }
-}
 
 @injectable()
 export class TerminalAutoActivation implements ITerminalAutoActivation {
     private handler?: IDisposable;
+
+    private readonly terminalsNotToAutoActivate = new WeakSet<Terminal>();
+
     constructor(
         @inject(ITerminalManager) private readonly terminalManager: ITerminalManager,
         @inject(IDisposableRegistry) disposableRegistry: IDisposableRegistry,
@@ -49,19 +24,29 @@ export class TerminalAutoActivation implements ITerminalAutoActivation {
     ) {
         disposableRegistry.push(this);
     }
-    public dispose() {
+
+    public dispose(): void {
         if (this.handler) {
             this.handler.dispose();
             this.handler = undefined;
         }
     }
-    public register() {
+
+    public register(): void {
         if (this.handler) {
             return;
         }
         this.handler = this.terminalManager.onDidOpenTerminal(this.activateTerminal, this);
     }
+
+    public disableAutoActivation(terminal: Terminal): void {
+        this.terminalsNotToAutoActivate.add(terminal);
+    }
+
     private async activateTerminal(terminal: Terminal): Promise<void> {
+        if (this.terminalsNotToAutoActivate.has(terminal)) {
+            return;
+        }
         if ('hideFromUser' in terminal.creationOptions && terminal.creationOptions.hideFromUser) {
             return;
         }

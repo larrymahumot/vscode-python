@@ -5,17 +5,16 @@ import { IApplicationShell, ICommandManager } from '../../common/application/typ
 import * as constants from '../../common/constants';
 import { IFileSystem } from '../../common/platform/types';
 import { IServiceContainer } from '../../ioc/types';
-import { CommandSource } from '../common/constants';
 import {
     FlattenedTestFunction,
     ITestCollectionStorageService,
+    ITestDisplay,
     TestFile,
     TestFunction,
     Tests,
     TestStatus,
     TestsToRun,
 } from '../common/types';
-import { ITestDisplay } from '../types';
 
 @injectable()
 export class TestDisplay implements ITestDisplay {
@@ -35,7 +34,7 @@ export class TestDisplay implements ITestDisplay {
             }
         });
     }
-    public displayTestUI(cmdSource: CommandSource, wkspace: Uri) {
+    public displayTestUI(cmdSource: constants.CommandSource, wkspace: Uri) {
         const tests = this.testCollectionStorage.getTests(wkspace);
         this.appShell
             .showQuickPick(buildItems(tests), { matchOnDescription: true, matchOnDetail: true })
@@ -74,7 +73,7 @@ export class TestDisplay implements ITestDisplay {
         });
     }
     public displayFunctionTestPickerUI(
-        cmdSource: CommandSource,
+        cmdSource: constants.CommandSource,
         wkspace: Uri,
         rootDirectory: string,
         file: Uri,
@@ -277,7 +276,7 @@ function buildItemsForTestFiles(rootDirectory: string, testFiles: TestFile[]): T
 }
 export function onItemSelected(
     commandManager: ICommandManager,
-    cmdSource: CommandSource,
+    cmdSource: constants.CommandSource,
     wkspace: Uri,
     selection: TestItem,
     debug?: boolean,

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 'use strict';
+
 import {
     Breakpoint,
     BreakpointsChangeEvent,
@@ -47,10 +49,10 @@ import {
     TextEditorViewColumnChangeEvent,
     TreeView,
     TreeViewOptions,
+    UIKind,
     Uri,
     ViewColumn,
     WebviewPanel,
-    WebviewPanelOptions,
     WindowState,
     WorkspaceConfiguration,
     WorkspaceEdit,
@@ -58,22 +60,9 @@ import {
     WorkspaceFolderPickOptions,
     WorkspaceFoldersChangeEvent,
 } from 'vscode';
-import type {
-    NotebookCellLanguageChangeEvent as VSCNotebookCellLanguageChangeEvent,
-    NotebookCellMetadata,
-    NotebookCellMetadataChangeEvent as VSCNotebookCellMetadataChangeEvent,
-    NotebookCellOutputsChangeEvent as VSCNotebookCellOutputsChangeEvent,
-    NotebookCellsChangeEvent as VSCNotebookCellsChangeEvent,
-    NotebookConcatTextDocument,
-    NotebookContentProvider,
-    NotebookDocument,
-    NotebookDocumentFilter,
-    NotebookDocumentMetadataChangeEvent as VSCNotebookDocumentMetadataChangeEvent,
-    NotebookEditor,
-    NotebookKernel,
-    NotebookKernelProvider,
-} from 'vscode-proposed';
+import type { NotebookConcatTextDocument, NotebookDocument } from 'vscode-proposed';
 
+import { Channel } from '../constants';
 import { IAsyncDisposable, Resource } from '../types';
 import { ICommandNameArgumentTypeMapping } from './commands';
 
@@ -331,6 +320,7 @@ export interface IApplicationShell {
      * @param hideWhenDone Thenable on which completion (resolve or reject) the message will be disposed.
      * @return A disposable which hides the status bar message.
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setStatusBarMessage(text: string, hideWhenDone: Thenable<any>): Disposable;
 
     /**
@@ -446,7 +436,9 @@ export interface ICommandManager {
      */
     registerCommand<E extends keyof ICommandNameArgumentTypeMapping, U extends ICommandNameArgumentTypeMapping[E]>(
         command: E,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         callback: (...args: U) => any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         thisArg?: any,
     ): Disposable;
 
@@ -466,7 +458,9 @@ export interface ICommandManager {
      */
     registerTextEditorCommand(
         command: string,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         callback: (textEditor: TextEditor, edit: TextEditorEdit, ...args: any[]) => void,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         thisArg?: any,
     ): Disposable;
 
@@ -502,7 +496,6 @@ export interface ICommandManager {
 export const IJupyterExtensionDependencyManager = Symbol('IJupyterExtensionDependencyManager');
 export interface IJupyterExtensionDependencyManager {
     readonly isJupyterExtensionInstalled: boolean;
-    installJupyterExtension(): Promise<undefined>;
 }
 
 export const IDocumentManager = Symbol('IDocumentManager');
@@ -1001,6 +994,7 @@ export interface IApplicationEnvironment {
      * @type {any}
      * @memberof IApplicationEnvironment
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     readonly packageJson: any;
     /**
      * Gets the full path to the user settings file. (may or may not exist).
@@ -1036,6 +1030,12 @@ export interface IApplicationEnvironment {
      * The custom uri scheme the editor registers to in the operating system.
      */
     readonly uriScheme: string;
+    /**
+     * The UI kind property indicates from which UI extensions
+     * are accessed from. For example, extensions could be accessed
+     * from a desktop application or a web browser.
+     */
+    readonly uiKind: UIKind;
 }
 
 export interface IWebviewMessageListener {
@@ -1044,6 +1044,7 @@ export interface IWebviewMessageListener {
      * @param message: the message being sent
      * @param payload: extra data that came with the message
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onMessage(message: string, payload: any): void;
 }
 
@@ -1064,6 +1065,7 @@ export type WebviewMessage = {
     /**
      * Payload
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     payload?: any;
 };
 
@@ -1137,7 +1139,7 @@ export interface IWebviewPanelOptions extends IWebviewOptions {
      * E.g. required for webview to serve images from worksapces when nb is in a nested folder.
      */
     additionalPaths?: string[];
-
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     settings?: any;
     // Web panel to use if supplied by VS code instead
     webViewPanel?: WebviewPanel;
@@ -1172,8 +1174,6 @@ export interface ILanguageService {
     ): Disposable;
 }
 
-export type Channel = 'stable' | 'insiders';
-
 /**
  * Wraps the `ActiveResourceService` API class. Created for injecting and mocking class methods in testing
  */
@@ -1184,7 +1184,7 @@ export interface IActiveResourceService {
 
 // Temporary hack to get the nyc compiler to find these types. vscode.proposed.d.ts doesn't work for some reason.
 
-//#region Custom editor https://github.com/microsoft/vscode/issues/77131
+// #region Custom editor https://github.com/microsoft/vscode/issues/77131
 
 /**
  * Represents a custom document used by a [`CustomEditorProvider`](#CustomEditorProvider).
@@ -1463,44 +1463,6 @@ export interface CustomEditorProvider<T extends CustomDocument = CustomDocument>
 
 // #endregion
 
-export const ICustomEditorService = Symbol('ICustomEditorService');
-export interface ICustomEditorService {
-    /**
-     * Register a new provider for webview editors of a given type.
-     *
-     * @param viewType  Type of the webview editor provider.
-     * @param provider Resolves webview editors.
-     * @param options Content settings for a webview panels the provider is given.
-     *
-     * @return Disposable that unregisters the `WebviewCustomEditorProvider`.
-     */
-    registerCustomEditorProvider(
-        viewType: string,
-        provider: CustomReadonlyEditorProvider | CustomEditorProvider,
-        options?: {
-            readonly webviewOptions?: WebviewPanelOptions;
-
-            /**
-             * Only applies to `CustomReadonlyEditorProvider | CustomEditorProvider`.
-             *
-             * Indicates that the provider allows multiple editor instances to be open at the same time for
-             * the same resource.
-             *
-             * If not set, VS Code only allows one editor instance to be open at a time for each resource. If the
-             * user tries to open a second editor instance for the resource, the first one is instead moved to where
-             * the second one was to be opened.
-             *
-             * When set, users can split and create copies of the custom editor. The custom editor must make sure it
-             * can properly synchronize the states of all editor instances for a resource so that they are consistent.
-             */
-            readonly supportsMultipleEditorsPerDocument?: boolean;
-        },
-    ): Disposable;
-    /**
-     * Opens a file with a custom editor
-     */
-    openEditor(file: Uri, viewType: string): Promise<void>;
-}
 export const IClipboard = Symbol('IClipboard');
 export interface IClipboard {
     /**
@@ -1513,52 +1475,10 @@ export interface IClipboard {
      */
     writeText(value: string): Promise<void>;
 }
-
-export type NotebookCellsChangeEvent = { type: 'changeCells' } & VSCNotebookCellsChangeEvent;
-export type NotebookCellOutputsChangeEvent = { type: 'changeCellOutputs' } & VSCNotebookCellOutputsChangeEvent;
-export type NotebookCellMetadataChangeEvent = { type: 'changeCellMetadata' } & VSCNotebookCellMetadataChangeEvent;
-export type NotebookCellLanguageChangeEvent = { type: 'changeCellLanguage' } & VSCNotebookCellLanguageChangeEvent;
-export type NotebookDocumentMetadataChangeEvent = {
-    type: 'changeNotebookMetadata';
-} & VSCNotebookDocumentMetadataChangeEvent;
-export type NotebookCellChangedEvent =
-    | NotebookCellsChangeEvent
-    | NotebookCellOutputsChangeEvent
-    | NotebookCellMetadataChangeEvent
-    | NotebookDocumentMetadataChangeEvent
-    | NotebookCellLanguageChangeEvent;
 export const IVSCodeNotebook = Symbol('IVSCodeNotebook');
 export interface IVSCodeNotebook {
-    readonly onDidChangeActiveNotebookKernel: Event<{
-        document: NotebookDocument;
-        kernel: NotebookKernel | undefined;
-    }>;
     readonly notebookDocuments: ReadonlyArray<NotebookDocument>;
     readonly onDidOpenNotebookDocument: Event<NotebookDocument>;
     readonly onDidCloseNotebookDocument: Event<NotebookDocument>;
-    readonly onDidSaveNotebookDocument: Event<NotebookDocument>;
-    readonly onDidChangeActiveNotebookEditor: Event<NotebookEditor | undefined>;
-    readonly onDidChangeNotebookDocument: Event<NotebookCellChangedEvent>;
-    readonly notebookEditors: Readonly<NotebookEditor[]>;
-    readonly activeNotebookEditor: NotebookEditor | undefined;
-    registerNotebookContentProvider(
-        notebookType: string,
-        provider: NotebookContentProvider,
-        options?: {
-            /**
-             * Controls if outputs change will trigger notebook document content change and if it will be used in the diff editor
-             * Default to false. If the content provider doesn't persisit the outputs in the file document, this should be set to true.
-             */
-            transientOutputs: boolean;
-            /**
-             * Controls if a meetadata property change will trigger notebook document content change and if it will be used in the diff editor
-             * Default to false. If the content provider doesn't persisit a metadata property in the file document, it should be set to true.
-             */
-            transientMetadata: { [K in keyof NotebookCellMetadata]?: boolean };
-        },
-    ): Disposable;
-
-    registerNotebookKernelProvider(selector: NotebookDocumentFilter, provider: NotebookKernelProvider): Disposable;
-
     createConcatTextDocument(notebook: NotebookDocument, selector?: DocumentSelector): NotebookConcatTextDocument;
 }

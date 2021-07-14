@@ -11,6 +11,6 @@ export {
     logInfo,
     logVerbose,
     logWarning,
+    getPythonOutputChannelContent,
     traceDecorators,
-    tracing,
 } from './_global';

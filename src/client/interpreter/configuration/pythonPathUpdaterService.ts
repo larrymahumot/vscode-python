@@ -1,29 +1,28 @@
 import { inject, injectable } from 'inversify';
 import * as path from 'path';
 import { ConfigurationTarget, Uri, window } from 'vscode';
+import { inDiscoveryExperiment } from '../../common/experiments/helpers';
 import { traceError } from '../../common/logger';
 import { IPythonExecutionFactory } from '../../common/process/types';
+import { IExperimentService } from '../../common/types';
 import { StopWatch } from '../../common/utils/stopWatch';
-import { IServiceContainer } from '../../ioc/types';
 import { InterpreterInformation } from '../../pythonEnvironments/info';
 import { sendTelemetryEvent } from '../../telemetry';
 import { EventName } from '../../telemetry/constants';
 import { PythonInterpreterTelemetry } from '../../telemetry/types';
-import { IInterpreterVersionService } from '../contracts';
+import { IComponentAdapter } from '../contracts';
 import { IPythonPathUpdaterServiceFactory, IPythonPathUpdaterServiceManager } from './types';
 
 @injectable()
 export class PythonPathUpdaterService implements IPythonPathUpdaterServiceManager {
-    private readonly pythonPathSettingsUpdaterFactory: IPythonPathUpdaterServiceFactory;
-    private readonly interpreterVersionService: IInterpreterVersionService;
-    private readonly executionFactory: IPythonExecutionFactory;
-    constructor(@inject(IServiceContainer) serviceContainer: IServiceContainer) {
-        this.pythonPathSettingsUpdaterFactory = serviceContainer.get<IPythonPathUpdaterServiceFactory>(
-            IPythonPathUpdaterServiceFactory,
-        );
-        this.interpreterVersionService = serviceContainer.get<IInterpreterVersionService>(IInterpreterVersionService);
-        this.executionFactory = serviceContainer.get<IPythonExecutionFactory>(IPythonExecutionFactory);
-    }
+    constructor(
+        @inject(IPythonPathUpdaterServiceFactory)
+        private readonly pythonPathSettingsUpdaterFactory: IPythonPathUpdaterServiceFactory,
+        @inject(IPythonExecutionFactory) private readonly executionFactory: IPythonExecutionFactory,
+        @inject(IComponentAdapter) private readonly pyenvs: IComponentAdapter,
+        @inject(IExperimentService) private readonly experimentService: IExperimentService,
+    ) {}
+
     public async updatePythonPath(
         pythonPath: string | undefined,
         configTarget: ConfigurationTarget,
@@ -47,6 +46,7 @@ export class PythonPathUpdaterService implements IPythonPathUpdaterServiceManage
             traceError('Python Extension: sendTelemetry', ex),
         );
     }
+
     private async sendTelemetry(
         duration: number,
         failed: boolean,
@@ -58,27 +58,26 @@ export class PythonPathUpdaterService implements IPythonPathUpdaterServiceManage
             trigger,
         };
         if (!failed && pythonPath) {
-            const processService = await this.executionFactory.create({ pythonPath });
-            const infoPromise = processService
-                .getInterpreterInformation()
-                .catch<InterpreterInformation | undefined>(() => undefined);
-            const pipVersionPromise = this.interpreterVersionService
-                .getPipVersion(pythonPath)
-                .then((value) => (value.length === 0 ? undefined : value))
-                .catch<string>(() => '');
-            const [info, pipVersion] = await Promise.all([infoPromise, pipVersionPromise]);
-            if (info) {
-                telemetryProperties.architecture = info.architecture;
-                if (info.version) {
+            if (await inDiscoveryExperiment(this.experimentService)) {
+                const interpreterInfo = await this.pyenvs.getInterpreterInformation(pythonPath);
+                if (interpreterInfo) {
+                    telemetryProperties.pythonVersion = interpreterInfo.version?.raw;
+                }
+            } else {
+                const processService = await this.executionFactory.create({ pythonPath });
+                const info = await processService
+                    .getInterpreterInformation()
+                    .catch<InterpreterInformation | undefined>(() => undefined);
+
+                if (info && info.version) {
                     telemetryProperties.pythonVersion = info.version.raw;
                 }
             }
-            if (pipVersion) {
-                telemetryProperties.pipVersion = pipVersion;
-            }
         }
+
         sendTelemetryEvent(EventName.PYTHON_INTERPRETER, duration, telemetryProperties);
     }
+
     private getPythonUpdaterService(configTarget: ConfigurationTarget, wkspace?: Uri) {
         switch (configTarget) {
             case ConfigurationTarget.Global: {

@@ -5,12 +5,12 @@ import * as path from 'path';
 import * as sinon from 'sinon';
 import * as fsWatcher from '../../../../client/common/platform/fileSystemWatcher';
 import * as platformUtils from '../../../../client/common/utils/platform';
-import { PythonEnvInfo, PythonEnvKind } from '../../../../client/pythonEnvironments/base/info';
+import { PythonEnvInfo, PythonEnvKind, PythonEnvSource } from '../../../../client/pythonEnvironments/base/info';
 import { buildEnvInfo } from '../../../../client/pythonEnvironments/base/info/env';
 import { getEnvs } from '../../../../client/pythonEnvironments/base/locatorUtils';
 import { PyenvLocator } from '../../../../client/pythonEnvironments/discovery/locators/services/pyenvLocator';
 import { TEST_LAYOUT_ROOT } from '../../common/commonTestConstants';
-import { assertEnvEqual, assertEnvsEqual } from './envTestUtils';
+import { assertEnvsEqual } from './envTestUtils';
 
 suite('Pyenv Locator Tests', () => {
     let getEnvVariableStub: sinon.SinonStub;
@@ -54,8 +54,9 @@ suite('Pyenv Locator Tests', () => {
                     minor: 9,
                     micro: 0,
                 },
+                source: [PythonEnvSource.Pyenv],
             });
-            envInfo.defaultDisplayName = '3.9.0:pyenv';
+            envInfo.display = '3.9.0:pyenv';
             envInfo.location = path.join(testPyenvVersionsDir, '3.9.0');
             envInfo.name = '3.9.0';
             return envInfo;
@@ -70,8 +71,9 @@ suite('Pyenv Locator Tests', () => {
                     minor: 8,
                     micro: 5,
                 },
+                source: [PythonEnvSource.Pyenv],
             });
-            envInfo.defaultDisplayName = 'conda1:pyenv';
+            envInfo.display = 'conda1:pyenv';
             envInfo.location = path.join(testPyenvVersionsDir, 'conda1');
             envInfo.name = 'conda1';
             return envInfo;
@@ -86,8 +88,9 @@ suite('Pyenv Locator Tests', () => {
                     minor: 7,
                     micro: -1,
                 },
+                source: [PythonEnvSource.Pyenv],
             });
-            envInfo.defaultDisplayName = 'miniconda3-4.7.12:pyenv';
+            envInfo.display = 'miniconda3-4.7.12:pyenv';
             envInfo.location = path.join(testPyenvVersionsDir, 'miniconda3-4.7.12');
             envInfo.name = 'miniconda3-4.7.12';
             envInfo.distro.org = 'miniconda3';
@@ -103,8 +106,9 @@ suite('Pyenv Locator Tests', () => {
                     minor: 9,
                     micro: 0,
                 },
+                source: [PythonEnvSource.Pyenv],
             });
-            envInfo.defaultDisplayName = 'venv1:pyenv';
+            envInfo.display = 'venv1:pyenv';
             envInfo.location = path.join(testPyenvVersionsDir, 'venv1');
             envInfo.name = 'venv1';
             return envInfo;
@@ -128,44 +132,8 @@ suite('Pyenv Locator Tests', () => {
             });
 
         const actualEnvs = (await getEnvs(locator.iterEnvs()))
-            // We sort for a stable comparision.
+            // We sort for a stable comparison.
             .sort((a, b) => a.executable.filename.localeCompare(b.executable.filename));
         assertEnvsEqual(actualEnvs, expectedEnvs);
-    });
-
-    test('resolveEnv(string)', async () => {
-        const pythonPath = path.join(testPyenvVersionsDir, '3.9.0', 'bin', 'python');
-        const expected = getExpectedPyenvInfo('3.9.0');
-
-        const actual = await locator.resolveEnv(pythonPath);
-        assertEnvEqual(actual, expected);
-    });
-    test('resolveEnv(PythonEnvInfo)', async () => {
-        const pythonPath = path.join(testPyenvVersionsDir, '3.9.0', 'bin', 'python');
-        const expected = getExpectedPyenvInfo('3.9.0');
-
-        // Partially filled in env info object
-        const input: PythonEnvInfo = {
-            name: '',
-            location: '',
-            kind: PythonEnvKind.Unknown,
-            distro: { org: '' },
-            arch: platformUtils.Architecture.Unknown,
-            executable: {
-                filename: pythonPath,
-                sysPrefix: '',
-                ctime: -1,
-                mtime: -1,
-            },
-            version: {
-                major: -1,
-                minor: -1,
-                micro: -1,
-            },
-        };
-
-        const actual = await locator.resolveEnv(input);
-
-        assertEnvEqual(actual, expected);
     });
 });

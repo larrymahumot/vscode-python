@@ -22,8 +22,9 @@ export type PythonEnvUpdatedEvent = {
     old?: PythonEnvInfo;
     /**
      * The env info that replaces the old info.
+     * Update is sent as `undefined` if we find out that the environment is no longer valid.
      */
-    update: PythonEnvInfo;
+    update: PythonEnvInfo | undefined;
 };
 
 /**
@@ -70,19 +71,24 @@ export const NOOP_ITERATOR: IPythonEnvsIterator = iterEmpty<PythonEnvInfo>();
  *
  * This is directly correlated with the `BasicPythonEnvsChangedEvent`
  * emitted by watchers.
- *
- * @prop kinds - if provided, results should be limited to these env
- *               kinds; if not provided, the kind of each evnironment
- *               is not considered when filtering
  */
-export type BasicPythonLocatorQuery = {
+type BasicPythonLocatorQuery = {
+    /**
+     * If set as true, ignore the cache and query for fresh environments.
+     */
+    ignoreCache?: boolean;
+    /**
+     * If provided, results should be limited to these env
+     * kinds; if not provided, the kind of each environment
+     * is not considered when filtering
+     */
     kinds?: PythonEnvKind[];
 };
 
 /**
  * The portion of a query related to env search locations.
  */
-export type SearchLocations = {
+type SearchLocations = {
     /**
      * The locations under which to look for environments.
      */
@@ -141,25 +147,21 @@ export interface ILocator<E extends BasicPythonEnvsChangedEvent = PythonEnvsChan
      * @returns - the fast async iterator of Python envs, which may have incomplete info
      */
     iterEnvs(query?: QueryForEvent<E>): IPythonEnvsIterator;
-
-    /**
-     * Find the given Python environment and fill in as much missing info as possible.
-     *
-     * If the locator can find the environment then the result is as
-     * much info about that env as the locator has.  At the least this
-     * will include all the `PythonEnvBaseInfo` data.  If a `PythonEnvInfo`
-     * was provided then the result will be a copy with any updates or
-     * extra info applied.
-     *
-     * If the locator could not find the environment then `undefined`
-     * is returned.
-     *
-     * @param env - the Python executable path or partial env info to find and update
-     */
-    resolveEnv(env: string | PythonEnvInfo): Promise<PythonEnvInfo | undefined>;
 }
 
-interface IEmitter<E extends BasicPythonEnvsChangedEvent> {
+interface IResolver {
+    /**
+     * Find as much info about the given Python environment as possible.
+     * If executable passed is invalid, then `undefined` is returned.
+     *
+     * @param env - the Python executable path to resolve more information about
+     */
+    resolveEnv(env: string): Promise<PythonEnvInfo | undefined>;
+}
+
+export interface IResolvingLocator extends IResolver, ILocator {}
+
+interface IEmitter<E extends PythonEnvsChangedEvent> {
     fire(e: E): void;
 }
 
@@ -187,11 +189,6 @@ abstract class LocatorBase<E extends BasicPythonEnvsChangedEvent = PythonEnvsCha
 
     // eslint-disable-next-line class-methods-use-this
     public abstract iterEnvs(query?: QueryForEvent<E>): IPythonEnvsIterator;
-
-    // eslint-disable-next-line class-methods-use-this,@typescript-eslint/no-unused-vars
-    public async resolveEnv(_env: string | PythonEnvInfo): Promise<PythonEnvInfo | undefined> {
-        return undefined;
-    }
 }
 
 /**

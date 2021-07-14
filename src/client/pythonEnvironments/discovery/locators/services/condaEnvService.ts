@@ -5,7 +5,7 @@ import { inject, injectable } from 'inversify';
 import { Uri } from 'vscode';
 import { traceError } from '../../../../common/logger';
 import { IFileSystem } from '../../../../common/platform/types';
-import { ICondaService, IInterpreterHelper } from '../../../../interpreter/contracts';
+import { ICondaLocatorService, IInterpreterHelper } from '../../../../interpreter/contracts';
 import { IServiceContainer } from '../../../../ioc/types';
 import { PythonEnvironment } from '../../../info';
 import { CacheableLocatorService } from './cacheableLocatorService';
@@ -17,7 +17,7 @@ import { parseCondaInfo } from './conda';
 @injectable()
 export class CondaEnvService extends CacheableLocatorService {
     constructor(
-        @inject(ICondaService) private condaService: ICondaService,
+        @inject(ICondaLocatorService) private condaService: ICondaLocatorService,
         @inject(IInterpreterHelper) private helper: IInterpreterHelper,
         @inject(IServiceContainer) serviceContainer: IServiceContainer,
         @inject(IFileSystem) private fileSystem: IFileSystem,
@@ -40,7 +40,6 @@ export class CondaEnvService extends CacheableLocatorService {
      *
      * This is used by CacheableLocatorService.getInterpreters().
      */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     protected getInterpretersImplementation(_resource?: Uri): Promise<PythonEnvironment[]> {
         return this.getSuggestionsFromConda();
     }

@@ -5,9 +5,10 @@ import { expect, use } from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
 import * as path from 'path';
 import { Uri } from 'vscode';
+import { CommandSource } from '../../client/common/constants';
 import { Product } from '../../client/common/types';
 import { createDeferred } from '../../client/common/utils/async';
-import { CANCELLATION_REASON, CommandSource, UNITTEST_PROVIDER } from '../../client/testing/common/constants';
+import { CANCELLATION_REASON, UNITTEST_PROVIDER } from '../../client/testing/common/constants';
 import { ITestDiscoveryService } from '../../client/testing/common/types';
 import { initialize, initializeTest } from '../initialize';
 import { MockDiscoveryService, MockTestManagerWithRunningTests } from './mocks';
@@ -36,11 +37,11 @@ suite('Unit Tests Stopping Discovery and Runner', () => {
     suiteSetup(initialize);
     setup(async () => {
         await initializeTest();
-        initializeDI();
+        await initializeDI();
     });
     teardown(() => ioc.dispose());
 
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerProcessTypes();
@@ -53,7 +54,7 @@ suite('Unit Tests Stopping Discovery and Runner', () => {
         ioc.registerTestsHelper();
         ioc.registerTestDiagnosticServices();
         ioc.registerInterpreterStorageTypes();
-        ioc.registerMockInterpreterTypes();
+        await ioc.registerMockInterpreterTypes();
     }
 
     test('Running tests should not stop existing discovery', async () => {

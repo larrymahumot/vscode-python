@@ -1,17 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 'use strict';
+
 import { Uri } from 'vscode';
 
 import { IProcessServiceFactory } from '../../client/common/process/types';
-import { InterpreterEvaluation } from '../../client/interpreter/autoSelection/interpreterSecurity/interpreterEvaluation';
-import { InterpreterSecurityService } from '../../client/interpreter/autoSelection/interpreterSecurity/interpreterSecurityService';
-import { InterpreterSecurityStorage } from '../../client/interpreter/autoSelection/interpreterSecurity/interpreterSecurityStorage';
-import {
-    IInterpreterEvaluation,
-    IInterpreterSecurityService,
-    IInterpreterSecurityStorage,
-} from '../../client/interpreter/autoSelection/types';
 import { IInterpreterHelper } from '../../client/interpreter/contracts';
 import { InterpreterHelper } from '../../client/interpreter/helpers';
 import { IServiceContainer } from '../../client/ioc/types';
@@ -31,6 +25,7 @@ import { TestResultResetVisitor } from '../../client/testing/common/testVisitors
 import {
     ITestCollectionStorageService,
     ITestContextService,
+    ITestDiagnosticService,
     ITestDiscoveryService,
     ITestManager,
     ITestManagerFactory,
@@ -42,14 +37,13 @@ import {
     ITestsStatusUpdaterService,
     ITestVisitor,
     IUnitTestSocketServer,
-    TestProvider,
 } from '../../client/testing/common/types';
 import { TestManager as NoseTestManager } from '../../client/testing/nosetest/main';
 import { TestDiscoveryService as NoseTestDiscoveryService } from '../../client/testing/nosetest/services/discoveryService';
 import { TestsParser as NoseTestTestsParser } from '../../client/testing/nosetest/services/parserService';
 import { TestManager as PyTestTestManager } from '../../client/testing/pytest/main';
 import { TestDiscoveryService as PytestTestDiscoveryService } from '../../client/testing/pytest/services/discoveryService';
-import { ITestDiagnosticService } from '../../client/testing/types';
+import { TestProvider } from '../../client/testing/types';
 import { TestManager as UnitTestTestManager } from '../../client/testing/unittest/main';
 import { TestDiscoveryService as UnitTestTestDiscoveryService } from '../../client/testing/unittest/services/discoveryService';
 import { TestsParser as UnitTestTestsParser } from '../../client/testing/unittest/services/parserService';
@@ -58,21 +52,17 @@ import { IocContainer } from '../serviceRegistry';
 import { MockUnitTestSocketServer } from './mocks';
 
 export class UnitTestIocContainer extends IocContainer {
-    constructor() {
-        super();
-    }
     public async getPythonMajorVersion(resource: Uri): Promise<number> {
         const procServiceFactory = this.serviceContainer.get<IProcessServiceFactory>(IProcessServiceFactory);
         const procService = await procServiceFactory.create(resource);
         const pythonVersion = await getPythonSemVer(procService);
         if (pythonVersion) {
             return pythonVersion.major;
-        } else {
-            return -1; // log warning already issued by underlying functions...
         }
+        return -1; // log warning already issued by underlying functions...
     }
 
-    public registerTestVisitors() {
+    public registerTestVisitors(): void {
         this.serviceManager.add<ITestVisitor>(ITestVisitor, TestFlatteningVisitor, 'TestFlatteningVisitor');
         this.serviceManager.add<ITestVisitor>(ITestVisitor, TestResultResetVisitor, 'TestResultResetVisitor');
         this.serviceManager.addSingleton<ITestsStatusUpdaterService>(
@@ -82,27 +72,27 @@ export class UnitTestIocContainer extends IocContainer {
         this.serviceManager.addSingleton<ITestContextService>(ITestContextService, TestContextService);
     }
 
-    public registerTestStorage() {
+    public registerTestStorage(): void {
         this.serviceManager.addSingleton<ITestCollectionStorageService>(
             ITestCollectionStorageService,
             TestCollectionStorageService,
         );
     }
 
-    public registerTestsHelper() {
+    public registerTestsHelper(): void {
         this.serviceManager.addSingleton<ITestsHelper>(ITestsHelper, TestsHelper);
     }
 
-    public registerTestResultsHelper() {
+    public registerTestResultsHelper(): void {
         this.serviceManager.add<ITestResultsService>(ITestResultsService, TestResultsService);
     }
 
-    public registerTestParsers() {
+    public registerTestParsers(): void {
         this.serviceManager.add<ITestsParser>(ITestsParser, UnitTestTestsParser, UNITTEST_PROVIDER);
         this.serviceManager.add<ITestsParser>(ITestsParser, NoseTestTestsParser, NOSETEST_PROVIDER);
     }
 
-    public registerTestDiscoveryServices() {
+    public registerTestDiscoveryServices(): void {
         this.serviceManager.add<ITestDiscoveryService>(
             ITestDiscoveryService,
             UnitTestTestDiscoveryService,
@@ -122,13 +112,14 @@ export class UnitTestIocContainer extends IocContainer {
         this.serviceManager.add<ITestDiscoveredTestParser>(ITestDiscoveredTestParser, TestDiscoveredTestParser);
     }
 
-    public registerTestDiagnosticServices() {
+    public registerTestDiagnosticServices(): void {
         this.serviceManager.addSingleton<ITestDiagnosticService>(ITestDiagnosticService, UnitTestDiagnosticService);
     }
 
-    public registerTestManagers() {
-        this.serviceManager.addFactory<ITestManager>(ITestManagerFactory, (context) => {
-            return (testProvider: TestProvider, workspaceFolder: Uri, rootDirectory: string) => {
+    public registerTestManagers(): void {
+        this.serviceManager.addFactory<ITestManager>(
+            ITestManagerFactory,
+            (context) => (testProvider: TestProvider, workspaceFolder: Uri, rootDirectory: string) => {
                 const serviceContainer = context.container.get<IServiceContainer>(IServiceContainer);
 
                 switch (testProvider) {
@@ -145,28 +136,26 @@ export class UnitTestIocContainer extends IocContainer {
                         throw new Error(`Unrecognized test provider '${testProvider}'`);
                     }
                 }
-            };
-        });
+            },
+        );
     }
 
-    public registerInterpreterStorageTypes() {
-        this.serviceManager.add<IInterpreterSecurityStorage>(IInterpreterSecurityStorage, InterpreterSecurityStorage);
-        this.serviceManager.add<IInterpreterSecurityService>(IInterpreterSecurityService, InterpreterSecurityService);
-        this.serviceManager.add<IInterpreterEvaluation>(IInterpreterEvaluation, InterpreterEvaluation);
+    public registerInterpreterStorageTypes(): void {
         this.serviceManager.add<IInterpreterHelper>(IInterpreterHelper, InterpreterHelper);
     }
 
-    public registerTestManagerService() {
-        this.serviceManager.addFactory<ITestManagerService>(ITestManagerServiceFactory, (context) => {
-            return (workspaceFolder: Uri) => {
+    public registerTestManagerService(): void {
+        this.serviceManager.addFactory<ITestManagerService>(
+            ITestManagerServiceFactory,
+            (context) => (workspaceFolder: Uri) => {
                 const serviceContainer = context.container.get<IServiceContainer>(IServiceContainer);
                 const testsHelper = context.container.get<ITestsHelper>(ITestsHelper);
                 return new TestManagerService(workspaceFolder, testsHelper, serviceContainer);
-            };
-        });
+            },
+        );
     }
 
-    public registerMockUnitTestSocketServer() {
+    public registerMockUnitTestSocketServer(): void {
         this.serviceManager.addSingleton<IUnitTestSocketServer>(IUnitTestSocketServer, MockUnitTestSocketServer);
     }
 }

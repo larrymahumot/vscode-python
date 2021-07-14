@@ -7,7 +7,6 @@ import { CancellationToken, Uri } from 'vscode';
 import { PythonExecInfo } from '../../pythonEnvironments/exec';
 import { InterpreterInformation, PythonEnvironment } from '../../pythonEnvironments/info';
 import { ExecutionInfo, IDisposable } from '../types';
-import { EnvironmentVariables } from '../variables/types';
 
 export const IBufferDecoder = Symbol('IBufferDecoder');
 export interface IBufferDecoder {
@@ -89,6 +88,7 @@ export interface IPythonExecutionService {
     getInterpreterInformation(): Promise<InterpreterInformation | undefined>;
     getExecutablePath(): Promise<string>;
     isModuleInstalled(moduleName: string): Promise<boolean>;
+    getModuleVersion(moduleName: string): Promise<string | undefined>;
     getExecutionInfo(pythonArgs?: string[]): PythonExecInfo;
 
     execObservable(args: string[], options: SpawnOptions): ObservableExecutionResult<string>;
@@ -102,10 +102,6 @@ export class StdErrError extends Error {
     constructor(message: string) {
         super(message);
     }
-}
-
-export interface IExecutionEnvironmentVariablesService {
-    getEnvironmentVariables(resource?: Uri): Promise<EnvironmentVariables | undefined>;
 }
 
 export const IPythonToolExecutionService = Symbol('IPythonToolRunnerService');

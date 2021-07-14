@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 'use strict';
 
 import { Socket } from 'net';
@@ -19,10 +20,11 @@ import {
 } from 'vscode';
 import { LanguageServerType } from '../activation/types';
 import { LogLevel } from '../logging/levels';
-import { CommandsWithoutArgs } from './application/commands';
-import { ExtensionChannels } from './insidersBuild/types';
-import { InterpreterUri } from './installer/types';
+import type { ExtensionChannels } from './insidersBuild/types';
+import type { InterpreterUri, ModuleInstallFlags } from './installer/types';
 import { EnvironmentVariables } from './variables/types';
+import { ITestingSettings } from '../testing/configuration/types';
+
 export const IOutputChannel = Symbol('IOutputChannel');
 export interface IOutputChannel extends OutputChannel {}
 export const IDocumentSymbolProvider = Symbol('IDocumentSymbolProvider');
@@ -39,14 +41,6 @@ export interface IPersistentState<T> {
     readonly value: T;
     updateValue(value: T): Promise<void>;
 }
-export type Version = {
-    raw: string;
-    major: number;
-    minor: number;
-    patch: number;
-    build: string[];
-    prerelease: string[];
-};
 
 export type ReadWrite<T> = {
     -readonly [P in keyof T]: T[P];
@@ -72,6 +66,12 @@ export enum InstallerResponse {
     Ignore,
 }
 
+export enum ProductInstallStatus {
+    Installed,
+    NotInstalled,
+    NeedsUpgrade,
+}
+
 export enum ProductType {
     Linter = 'Linter',
     Formatter = 'Formatter',
@@ -79,7 +79,6 @@ export enum ProductType {
     RefactoringLibrary = 'RefactoringLibrary',
     WorkspaceSymbols = 'WorkspaceSymbols',
     DataScience = 'DataScience',
-    TensorBoard = 'TensorBoard',
 }
 
 export enum Product {
@@ -107,6 +106,8 @@ export enum Product {
     nbconvert = 22,
     pandas = 23,
     tensorboard = 24,
+    torchProfilerInstallName = 25,
+    torchProfilerImportName = 26,
 }
 
 export enum ModuleNamePurpose {
@@ -121,9 +122,20 @@ export interface IInstaller {
         product: Product,
         resource?: InterpreterUri,
         cancel?: CancellationToken,
+        flags?: ModuleInstallFlags,
     ): Promise<InstallerResponse>;
-    install(product: Product, resource?: InterpreterUri, cancel?: CancellationToken): Promise<InstallerResponse>;
-    isInstalled(product: Product, resource?: InterpreterUri): Promise<boolean | undefined>;
+    install(
+        product: Product,
+        resource?: InterpreterUri,
+        cancel?: CancellationToken,
+        flags?: ModuleInstallFlags,
+    ): Promise<InstallerResponse>;
+    isInstalled(product: Product, resource?: InterpreterUri): Promise<boolean>;
+    isProductVersionCompatible(
+        product: Product,
+        semVerRequirement: string,
+        resource?: InterpreterUri,
+    ): Promise<ProductInstallStatus>;
     translateProductToModuleName(product: Product, purpose: ModuleNamePurpose): string;
 }
 
@@ -156,6 +168,7 @@ export interface ICurrentProcess {
     readonly stdout: NodeJS.WriteStream;
     readonly stdin: NodeJS.ReadStream;
     readonly execPath: string;
+    // eslint-disable-next-line @typescript-eslint/ban-types
     on(event: string | symbol, listener: Function): this;
 }
 
@@ -187,29 +200,21 @@ export interface IPythonSettings {
     readonly onDidChange: Event<void>;
     readonly experiments: IExperiments;
     readonly languageServer: LanguageServerType;
+    readonly languageServerIsDefault: boolean;
     readonly defaultInterpreterPath: string;
     readonly logging: ILoggingSettings;
-    readonly useIsolation: boolean;
+    readonly tensorBoard: ITensorBoardSettings | undefined;
+    initialize(): void;
+}
+
+export interface ITensorBoardSettings {
+    readonly logDirectory: string | undefined;
 }
 export interface ISortImportSettings {
     readonly path: string;
     readonly args: string[];
 }
 
-export interface ITestingSettings {
-    readonly promptToConfigure: boolean;
-    readonly debugPort: number;
-    readonly nosetestsEnabled: boolean;
-    nosetestPath: string;
-    nosetestArgs: string[];
-    readonly pytestEnabled: boolean;
-    pytestPath: string;
-    pytestArgs: string[];
-    readonly unittestEnabled: boolean;
-    unittestArgs: string[];
-    cwd?: string;
-    readonly autoTestDiscoverOnSaveEnabled: boolean;
-}
 export interface IPylintCategorySeverity {
     readonly convention: DiagnosticSeverity;
     readonly refactor: DiagnosticSeverity;
@@ -258,6 +263,7 @@ export interface ILintingSettings {
     readonly pycodestyleCategorySeverity: IPycodestyleCategorySeverity;
     readonly flake8CategorySeverity: Flake8CategorySeverity;
     readonly mypyCategorySeverity: IMypyCategorySeverity;
+    cwd?: string;
     prospectorPath: string;
     pylintPath: string;
     pycodestylePath: string;
@@ -317,7 +323,7 @@ export interface IExperiments {
     readonly optOutFrom: string[];
 }
 
-export enum AnalysisSettingsLogLevel {
+enum AnalysisSettingsLogLevel {
     Information = 'Information',
     Error = 'Error',
     Warning = 'Warning',
@@ -336,24 +342,32 @@ export interface IAnalysisSettings {
     readonly logLevel: AnalysisSettingsLogLevel;
 }
 
-export interface IVariableQuery {
-    language: string;
-    query: string;
-    parseExpr: string;
-}
-
 export const IConfigurationService = Symbol('IConfigurationService');
 export interface IConfigurationService {
     getSettings(resource?: Uri): IPythonSettings;
     isTestExecution(): boolean;
-    updateSetting(setting: string, value?: {}, resource?: Uri, configTarget?: ConfigurationTarget): Promise<void>;
+    updateSetting(setting: string, value?: unknown, resource?: Uri, configTarget?: ConfigurationTarget): Promise<void>;
     updateSectionSetting(
         section: string,
         setting: string,
-        value?: {},
+        value?: unknown,
         resource?: Uri,
         configTarget?: ConfigurationTarget,
     ): Promise<void>;
+}
+
+/**
+ * Carries various tool execution path settings. For eg. pipenvPath, condaPath, pytestPath etc. These can be
+ * potentially used in discovery, autoselection, activation, installers, execution etc. And so should be a
+ * common interface to all the components.
+ */
+export const IToolExecutionPath = Symbol('IToolExecutionPath');
+export interface IToolExecutionPath {
+    readonly executable: string;
+}
+export enum ToolExecutionPath {
+    pipenv = 'pipenv',
+    // Gradually populate this list with tools as they come up.
 }
 
 export const ISocketServer = Symbol('ISocketServer');
@@ -427,7 +441,7 @@ export interface IExtensions {
      * All extensions currently known to the system.
      */
 
-    readonly all: readonly Extension<any>[];
+    readonly all: readonly Extension<unknown>[];
 
     /**
      * An event which fires when `extensions.all` changes. This can happen when extensions are
@@ -442,7 +456,7 @@ export interface IExtensions {
      * @return An extension or `undefined`.
      */
 
-    getExtension(extensionId: string): Extension<any> | undefined;
+    getExtension(extensionId: string): Extension<unknown> | undefined;
 
     /**
      * Get an extension its full identifier in the form of: `publisher.name`.
@@ -456,33 +470,6 @@ export interface IExtensions {
 export const IBrowserService = Symbol('IBrowserService');
 export interface IBrowserService {
     launch(url: string): void;
-}
-
-export const IPythonExtensionBanner = Symbol('IPythonExtensionBanner');
-export interface IPythonExtensionBanner {
-    readonly enabled: boolean;
-    showBanner(): Promise<void>;
-}
-export const BANNER_NAME_PROPOSE_LS: string = 'ProposePylance';
-
-export type DeprecatedSettingAndValue = {
-    setting: string;
-    values?: {}[];
-};
-
-export type DeprecatedFeatureInfo = {
-    doNotDisplayPromptStateKey: string;
-    message: string;
-    moreInfoUrl: string;
-    commands?: CommandsWithoutArgs[];
-    setting?: DeprecatedSettingAndValue;
-};
-
-export const IFeatureDeprecationManager = Symbol('IFeatureDeprecationManager');
-
-export interface IFeatureDeprecationManager extends Disposable {
-    initialize(): void;
-    registerDeprecation(deprecatedInfo: DeprecatedFeatureInfo): void;
 }
 
 export const IEditorUtils = Symbol('IEditorUtils');
@@ -541,38 +528,13 @@ export type ABExperiments = {
 }[];
 
 /**
- * Interface used to implement AB testing
- */
-export const IExperimentsManager = Symbol('IExperimentsManager');
-/**
- * @deprecated Use IExperimentService instead
- */
-export interface IExperimentsManager {
-    /**
-     * Checks if experiments are enabled, sets required environment to be used for the experiments, logs experiment groups
-     */
-    activate(): Promise<void>;
-
-    /**
-     * Checks if user is in experiment or not
-     * @param experimentName Name of the experiment
-     * @returns `true` if user is in experiment, `false` if user is not in experiment
-     */
-    inExperiment(experimentName: string): boolean;
-
-    /**
-     * Sends experiment telemetry if user is in experiment
-     * @param experimentName Name of the experiment
-     */
-    sendTelemetryIfInExperiment(experimentName: string): void;
-}
-
-/**
  * Experiment service leveraging VS Code's experiment framework.
  */
 export const IExperimentService = Symbol('IExperimentService');
 export interface IExperimentService {
+    activate(): Promise<void>;
     inExperiment(experimentName: string): Promise<boolean>;
+    inExperimentSync(experimentName: string): boolean;
     getExperimentValue<T extends boolean | number | string>(experimentName: string): Promise<T | undefined>;
 }
 
@@ -593,4 +555,19 @@ export interface IInterpreterPathService {
     inspect(resource: Resource): InspectInterpreterSettingType;
     update(resource: Resource, configTarget: ConfigurationTarget, value: string | undefined): Promise<void>;
     copyOldInterpreterStorageValuesToNew(resource: Uri | undefined): Promise<void>;
+}
+
+export type DefaultLSType = LanguageServerType.Jedi | LanguageServerType.JediLSP | LanguageServerType.Node;
+
+/**
+ * Interface used to retrieve the default language server.
+ *
+ * Note: This is added to get around a problem that the config service is not `async`.
+ * Adding experiment check there would mean touching the entire extension. For simplicity
+ * this is a solution.
+ */
+export const IDefaultLanguageServer = Symbol('IDefaultLanguageServer');
+
+export interface IDefaultLanguageServer {
+    readonly defaultLSType: DefaultLSType;
 }

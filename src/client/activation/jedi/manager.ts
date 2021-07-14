@@ -7,7 +7,7 @@ import '../../common/extensions';
 import { inject, injectable, named } from 'inversify';
 
 import { ICommandManager } from '../../common/application/types';
-import { traceDecorators } from '../../common/logger';
+import { traceDecorators, traceVerbose } from '../../common/logger';
 import { IDisposable, Resource } from '../../common/types';
 import { debounceSync } from '../../common/utils/decorators';
 import { EXTENSION_ROOT_DIR } from '../../constants';
@@ -36,6 +36,8 @@ export class JediLanguageServerManager implements ILanguageServerManager {
 
     private disposables: IDisposable[] = [];
 
+    private static commandDispose: IDisposable;
+
     private connected = false;
 
     private lsVersion: string | undefined;
@@ -43,15 +45,16 @@ export class JediLanguageServerManager implements ILanguageServerManager {
     constructor(
         @inject(IServiceContainer) private readonly serviceContainer: IServiceContainer,
         @inject(ILanguageServerAnalysisOptions)
-        @named(LanguageServerType.Jedi)
+        @named(LanguageServerType.JediLSP)
         private readonly analysisOptions: ILanguageServerAnalysisOptions,
         @inject(ICommandManager) commandManager: ICommandManager,
     ) {
-        this.disposables.push(
-            commandManager.registerCommand(Commands.RestartLS, () => {
-                this.restartLanguageServer().ignoreErrors();
-            }),
-        );
+        if (JediLanguageServerManager.commandDispose) {
+            JediLanguageServerManager.commandDispose.dispose();
+        }
+        JediLanguageServerManager.commandDispose = commandManager.registerCommand(Commands.RestartLS, () => {
+            this.restartLanguageServer().ignoreErrors();
+        });
     }
 
     private static versionTelemetryProps(instance: JediLanguageServerManager) {
@@ -64,6 +67,7 @@ export class JediLanguageServerManager implements ILanguageServerManager {
         if (this.languageProxy) {
             this.languageProxy.dispose();
         }
+        JediLanguageServerManager.commandDispose.dispose();
         this.disposables.forEach((d) => d.dispose());
     }
 
@@ -80,16 +84,22 @@ export class JediLanguageServerManager implements ILanguageServerManager {
         this.interpreter = interpreter;
         this.analysisOptions.onDidChange(this.restartLanguageServerDebounced, this, this.disposables);
 
-        // Version is actually hardcoded in our requirements.txt.
-        const requirementsTxt = await fs.readFile(path.join(EXTENSION_ROOT_DIR, 'requirements.txt'), 'utf-8');
+        try {
+            // Version is actually hardcoded in our requirements.txt.
+            const requirementsTxt = await fs.readFile(
+                path.join(EXTENSION_ROOT_DIR, 'jedils_requirements.txt'),
+                'utf-8',
+            );
 
-        // Search using a regex in the text
-        const match = /jedi-language-server==([0-9\.]*)/.exec(requirementsTxt);
-        if (match && match.length > 1) {
-            // eslint-disable-next-line prefer-destructuring
-            this.lsVersion = match[1];
-        } else {
-            this.lsVersion = '0.19.3';
+            // Search using a regex in the text
+            const match = /jedi-language-server==([0-9\.]*)/.exec(requirementsTxt);
+            if (match && match.length === 2) {
+                [, this.lsVersion] = match;
+            }
+        } catch (ex) {
+            // Getting version here is best effort and does not affect how LS works and
+            // failing to get version should not stop LS from working.
+            traceVerbose('Failed to get jedi-language-server version: ', ex);
         }
 
         await this.analysisOptions.initialize(resource, interpreter);
@@ -121,7 +131,7 @@ export class JediLanguageServerManager implements ILanguageServerManager {
     }
 
     @captureTelemetry(
-        EventName.LANGUAGE_SERVER_STARTUP,
+        EventName.JEDI_LANGUAGE_SERVER_STARTUP,
         undefined,
         true,
         undefined,
@@ -134,7 +144,7 @@ export class JediLanguageServerManager implements ILanguageServerManager {
         const options = await this.analysisOptions.getAnalysisOptions();
         this.middleware = new LanguageClientMiddleware(
             this.serviceContainer,
-            LanguageServerType.Jedi,
+            LanguageServerType.JediLSP,
             () => this.languageServerProxy?.languageClient,
             this.lsVersion,
         );

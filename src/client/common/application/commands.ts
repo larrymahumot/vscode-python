@@ -5,11 +5,9 @@
 
 import { CancellationToken, Position, TextDocument, Uri } from 'vscode';
 import { Commands as LSCommands } from '../../activation/commands';
-import { CommandSource } from '../../testing/common/constants';
-import { TestFunction, TestsToRun } from '../../testing/common/types';
-import { TestDataItem, TestWorkspaceFolder } from '../../testing/types';
-import { Commands } from '../constants';
-import { Channel } from './types';
+import { TensorBoardEntrypoint, TensorBoardEntrypointTrigger } from '../../tensorBoard/constants';
+import { TestDataItem, TestFunction, TestsToRun, TestWorkspaceFolder } from '../../testing/common/types';
+import { Channel, Commands, CommandSource } from '../constants';
 
 export type CommandsWithoutArgs = keyof ICommandNameWithoutArgumentTypeMapping;
 
@@ -22,7 +20,6 @@ interface ICommandNameWithoutArgumentTypeMapping {
     [Commands.SwitchToInsidersDaily]: [];
     [Commands.SwitchToInsidersWeekly]: [];
     [Commands.ClearWorkspaceInterpreter]: [];
-    [Commands.ResetInterpreterSecurityStorage]: [];
     [Commands.SwitchOffInsidersChannel]: [];
     [Commands.Set_Interpreter]: [];
     [Commands.Set_ShebangInterpreter]: [];
@@ -49,10 +46,14 @@ interface ICommandNameWithoutArgumentTypeMapping {
     [Commands.Tests_Discovering]: [];
     [Commands.PickLocalProcess]: [];
     [Commands.OpenStartPage]: [];
+    [Commands.ClearStorage]: [];
+    [Commands.ReportIssue]: [];
+    [Commands.RefreshTensorBoard]: [];
     [LSCommands.ClearAnalyisCache]: [];
     [LSCommands.RestartLS]: [];
-    [Commands.LaunchTensorBoard]: [];
 }
+
+export type AllCommands = keyof ICommandNameArgumentTypeMapping;
 
 /**
  * Mapping between commands and list of arguments.
@@ -64,13 +65,16 @@ interface ICommandNameWithoutArgumentTypeMapping {
 export interface ICommandNameArgumentTypeMapping extends ICommandNameWithoutArgumentTypeMapping {
     ['vscode.openWith']: [Uri, string];
     ['workbench.action.quickOpen']: [string];
-    ['workbench.extensions.installExtension']: [Uri | 'ms-python.python'];
+    ['workbench.extensions.installExtension']: [
+        Uri | 'ms-python.python',
+        { installOnlyNewlyAddedFromExtensionPackVSIX?: boolean } | undefined,
+    ];
     ['workbench.action.files.openFolder']: [];
     ['workbench.action.openWorkspace']: [];
     ['setContext']: [string, boolean] | ['python.vscode.channel', Channel];
     ['python.reloadVSCode']: [string];
     ['revealLine']: [{ lineNumber: number; at: 'top' | 'center' | 'bottom' }];
-    ['python._loadLanguageServerExtension']: {}[];
+    ['python._loadLanguageServerExtension']: Record<string, unknown>[];
     ['python.SelectAndInsertDebugConfiguration']: [TextDocument, Position, CancellationToken];
     ['vscode.open']: [Uri];
     ['notebook.execute']: [];
@@ -84,6 +88,8 @@ export interface ICommandNameArgumentTypeMapping extends ICommandNameWithoutArgu
     ['workbench.action.files.save']: [Uri];
     ['jupyter.opennotebook']: [undefined | Uri, undefined | CommandSource];
     ['jupyter.runallcells']: [Uri];
+    ['extension.open']: [string];
+    ['workbench.action.openIssueReporter']: [{ extensionId: string; issueBody: string }];
     [Commands.GetSelectedInterpreterPath]: [{ workspaceFolder: string } | string[]];
     [Commands.Build_Workspace_Symbols]: [boolean, CancellationToken];
     [Commands.Sort_Imports]: [undefined, Uri];
@@ -126,4 +132,5 @@ export interface ICommandNameArgumentTypeMapping extends ICommandNameWithoutArgu
     [Commands.navigateToTestFile]: [Uri, TestDataItem, boolean];
     [Commands.navigateToTestFunction]: [Uri, TestDataItem, boolean];
     [Commands.navigateToTestSuite]: [Uri, TestDataItem, boolean];
+    [Commands.LaunchTensorBoard]: [TensorBoardEntrypoint, TensorBoardEntrypointTrigger];
 }

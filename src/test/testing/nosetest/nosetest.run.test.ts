@@ -5,9 +5,8 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { EXTENSION_ROOT_DIR } from '../../../client/common/constants';
+import { CommandSource, EXTENSION_ROOT_DIR } from '../../../client/common/constants';
 import { IProcessServiceFactory } from '../../../client/common/process/types';
-import { CommandSource } from '../../../client/testing/common/constants';
 import { ITestManagerFactory, TestsToRun } from '../../../client/testing/common/types';
 import { rootWorkspaceUri, updateSetting } from '../../common';
 import { MockProcessService } from '../../mocks/proc';
@@ -53,21 +52,21 @@ suite('Unit Tests - nose - run against actual python process', () => {
     });
     setup(async () => {
         await initializeTest();
-        initializeDI();
+        await initializeDI();
     });
     teardown(async () => {
         await ioc.dispose();
         await updateSetting('testing.nosetestArgs', [], rootWorkspaceUri, configTarget);
     });
 
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerUnitTestTypes();
         ioc.registerVariableTypes();
 
         ioc.registerMockProcessTypes();
-        ioc.registerMockInterpreterTypes();
+        await ioc.registerMockInterpreterTypes();
         ioc.registerInterpreterStorageTypes();
     }
 

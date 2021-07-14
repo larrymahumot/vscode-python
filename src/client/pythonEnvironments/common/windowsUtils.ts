@@ -3,6 +3,7 @@
 
 import { uniqBy } from 'lodash';
 import * as path from 'path';
+import { isTestExecution } from '../../common/constants';
 import { traceError, traceVerbose } from '../../common/logger';
 import {
     HKCU,
@@ -17,11 +18,18 @@ import {
 /* eslint-disable global-require */
 
 /**
+ * Determine if the given filename looks like the simplest Python executable.
+ */
+export function matchBasicPythonBinFilename(filename: string): boolean {
+    return path.basename(filename).toLowerCase() === 'python.exe';
+}
+
+/**
  * Checks if a given path ends with python*.exe
  * @param {string} interpreterPath : Path to python interpreter.
  * @returns {boolean} : Returns true if the path matches pattern for windows python executable.
  */
-export function isWindowsPythonExe(interpreterPath: string): boolean {
+export function matchPythonBinFilename(filename: string): boolean {
     /**
      * This Reg-ex matches following file names:
      * python.exe
@@ -31,7 +39,7 @@ export function isWindowsPythonExe(interpreterPath: string): boolean {
      */
     const windowsPythonExes = /^python(\d+(.\d+)?)?\.exe$/;
 
-    return windowsPythonExes.test(path.basename(interpreterPath));
+    return windowsPythonExes.test(path.basename(filename));
 }
 
 export interface IRegistryInterpreterData {
@@ -39,7 +47,7 @@ export interface IRegistryInterpreterData {
     versionStr?: string;
     sysVersionStr?: string;
     bitnessStr?: string;
-    displayName?: string;
+    companyDisplayName?: string;
     distroOrgName?: string;
 }
 
@@ -65,7 +73,7 @@ async function getInterpreterDataFromKey(
                 result.versionStr = value.value;
                 break;
             case 'DisplayName':
-                result.displayName = value.value;
+                result.companyDisplayName = value.value;
                 break;
             default:
                 break;
@@ -102,7 +110,13 @@ export async function getInterpreterDataFromRegistry(
     return (allData.filter((data) => data !== undefined) || []) as IRegistryInterpreterData[];
 }
 
-export async function getRegistryInterpreters(): Promise<IRegistryInterpreterData[]> {
+let registryInterpreters: IRegistryInterpreterData[] | undefined;
+
+export async function getRegistryInterpreters(ignoreCache = false): Promise<IRegistryInterpreterData[]> {
+    if (!isTestExecution() && !ignoreCache && registryInterpreters !== undefined) {
+        return registryInterpreters;
+    }
+
     let registryData: IRegistryInterpreterData[] = [];
 
     for (const arch of ['x64', 'x86']) {
@@ -120,6 +134,6 @@ export async function getRegistryInterpreters(): Promise<IRegistryInterpreterDat
             }
         }
     }
-
-    return uniqBy(registryData, (r: IRegistryInterpreterData) => r.interpreterPath);
+    registryInterpreters = uniqBy(registryData, (r: IRegistryInterpreterData) => r.interpreterPath);
+    return registryInterpreters;
 }

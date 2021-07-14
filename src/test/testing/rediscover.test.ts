@@ -3,11 +3,12 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import { instance, mock } from 'ts-mockito';
 import { ConfigurationTarget } from 'vscode';
+import { CommandSource } from '../../client/common/constants';
 import { ICondaService, IInterpreterService } from '../../client/interpreter/contracts';
 import { InterpreterService } from '../../client/interpreter/interpreterService';
 import { CondaService } from '../../client/pythonEnvironments/discovery/locators/services/condaService';
-import { CommandSource } from '../../client/testing/common/constants';
-import { ITestManagerFactory, TestProvider } from '../../client/testing/common/types';
+import { ITestManagerFactory } from '../../client/testing/common/types';
+import { TestProvider } from '../../client/testing/types';
 import { deleteDirectory, deleteFile, rootWorkspaceUri, updateSetting } from '../common';
 import { initialize, initializeTest, IS_MULTI_ROOT_TEST, TEST_TIMEOUT } from './../initialize';
 import { UnitTestIocContainer } from './serviceRegistry';
@@ -30,7 +31,7 @@ suite('Unit Tests re-discovery', () => {
         await deleteDirectory(path.join(testFilesPath, '.cache'));
         await resetSettings();
         await initializeTest();
-        initializeDI();
+        await initializeDI();
     });
     teardown(async function () {
         // This is doing a lot more than what a teardown does normally, so increasing the timeout.
@@ -48,14 +49,14 @@ suite('Unit Tests re-discovery', () => {
         await updateSetting('testing.pytestArgs', [], rootWorkspaceUri, configTarget);
     }
 
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerProcessTypes();
         ioc.registerVariableTypes();
         ioc.registerUnitTestTypes();
         ioc.registerInterpreterStorageTypes();
-        ioc.registerMockInterpreterTypes();
+        await ioc.registerMockInterpreterTypes();
         ioc.serviceManager.rebindInstance<ICondaService>(ICondaService, instance(mock(CondaService)));
         ioc.serviceManager.rebindInstance<IInterpreterService>(IInterpreterService, instance(mock(InterpreterService)));
     }

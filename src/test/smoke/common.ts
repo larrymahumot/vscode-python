@@ -46,18 +46,22 @@ export async function enableJedi(enable: boolean | undefined): Promise<void> {
     await updateSetting('languageServer', 'Jedi');
 }
 
-export async function openNotebookAndWaitForLS(file: string): Promise<vscode.NotebookDocument> {
+export async function openNotebook(file: string): Promise<vscode.NotebookEditor> {
     await verifyExtensionIsAvailable(JUPYTER_EXTENSION_ID);
     await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(file), 'jupyter-notebook');
-    const notebook = vscode.notebook.activeNotebookEditor;
+    const notebook = vscode.window.activeNotebookEditor;
     assert(notebook, 'Notebook did not open');
+    return notebook;
+}
 
+export async function openNotebookAndWaitForLS(file: string): Promise<vscode.NotebookDocument> {
+    const notebook = await openNotebook(file);
     // Make sure LS completes file loading and analysis.
     // In test mode it awaits for the completion before trying
     // to fetch data for completion, hover.etc.
     await vscode.commands.executeCommand(
         'vscode.executeCompletionItemProvider',
-        notebook.document.cells[0].uri,
+        notebook.document.cellAt(0).document.uri,
         new vscode.Position(0, 0),
     );
     // For for LS to get extracted.

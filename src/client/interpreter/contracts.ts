@@ -1,6 +1,8 @@
 import { SemVer } from 'semver';
 import { CodeLensProvider, ConfigurationTarget, Disposable, Event, TextDocument, Uri } from 'vscode';
+import { IExtensionSingleActivationService } from '../activation/types';
 import { Resource } from '../common/types';
+import { PythonEnvSource } from '../pythonEnvironments/base/info';
 import { CondaEnvironmentInfo, CondaInfo } from '../pythonEnvironments/discovery/locators/services/conda';
 import { EnvironmentType, PythonEnvironment } from '../pythonEnvironments/info';
 
@@ -30,19 +32,42 @@ export interface IVirtualEnvironmentsSearchPathProvider {
 
 export const IComponentAdapter = Symbol('IComponentAdapter');
 export interface IComponentAdapter {
+    // InterpreterLocatorProgressStatubarHandler
+    readonly onRefreshing: Event<void>;
+    readonly onRefreshed: Event<void>;
+    // VirtualEnvPrompt
+    onDidCreate(resource: Resource, callback: () => void): Disposable;
     // IInterpreterLocatorService
-    hasInterpreters: Promise<boolean | undefined>;
-    getInterpreters(resource?: Uri): Promise<PythonEnvironment[] | undefined>;
+    hasInterpreters: Promise<boolean>;
+    getInterpreters(
+        resource?: Uri,
+        options?: GetInterpreterOptions,
+        source?: PythonEnvSource[],
+    ): Promise<PythonEnvironment[]>;
+
+    // WorkspaceVirtualEnvInterpretersAutoSelectionRule
+    getWorkspaceVirtualEnvInterpreters(
+        resource: Uri,
+        options?: { ignoreCache?: boolean },
+    ): Promise<PythonEnvironment[]>;
+
+    // IInterpreterLocatorService (for WINDOWS_REGISTRY_SERVICE)
+    getWinRegInterpreters(resource: Resource): Promise<PythonEnvironment[]>;
     // IInterpreterService
-    getInterpreterDetails(pythonPath: string, _resource?: Uri): Promise<undefined | PythonEnvironment>;
+    getInterpreterDetails(pythonPath: string): Promise<PythonEnvironment | undefined>;
+
     // IInterpreterHelper
-    getInterpreterInformation(pythonPath: string): Promise<undefined | Partial<PythonEnvironment>>;
-    isMacDefaultPythonPath(pythonPath: string): Promise<boolean | undefined>;
+    // Undefined is expected on this API, if the environment info retrieval fails.
+    getInterpreterInformation(pythonPath: string): Promise<Partial<PythonEnvironment> | undefined>;
+
+    isMacDefaultPythonPath(pythonPath: string): Promise<boolean>;
+
     // ICondaService
-    isCondaEnvironment(interpreterPath: string): Promise<boolean | undefined>;
+    isCondaEnvironment(interpreterPath: string): Promise<boolean>;
+    // Undefined is expected on this API, if the environment is not conda env.
     getCondaEnvironment(interpreterPath: string): Promise<CondaEnvironmentInfo | undefined>;
-    // IWindowsStoreInterpreter
-    isWindowsStoreInterpreter(pythonPath: string): Promise<boolean | undefined>;
+
+    isWindowsStoreInterpreter(pythonPath: string): Promise<boolean>;
 }
 
 export const IInterpreterLocatorService = Symbol('IInterpreterLocatorService');
@@ -51,20 +76,30 @@ export interface IInterpreterLocatorService extends Disposable {
     readonly onLocating: Event<Promise<PythonEnvironment[]>>;
     readonly hasInterpreters: Promise<boolean>;
     didTriggerInterpreterSuggestions?: boolean;
-    getInterpreters(resource?: Uri, options?: GetInterpreterLocatorOptions): Promise<PythonEnvironment[]>;
+    getInterpreters(resource?: Uri, options?: GetInterpreterOptions): Promise<PythonEnvironment[]>;
 }
 
 export const ICondaService = Symbol('ICondaService');
-
+/**
+ * Interface carries the properties which are not available via the discovery component interface.
+ */
 export interface ICondaService {
-    readonly condaEnvironmentsFile: string | undefined;
     getCondaFile(): Promise<string>;
     isCondaAvailable(): Promise<boolean>;
     getCondaVersion(): Promise<SemVer | undefined>;
+    getCondaFileFromInterpreter(interpreterPath?: string, envName?: string): Promise<string | undefined>;
+}
+
+export const ICondaLocatorService = Symbol('ICondaLocatorService');
+/**
+ * @deprecated Use the new discovery component when in experiment, use this otherwise.
+ */
+export interface ICondaLocatorService {
+    readonly condaEnvironmentsFile: string | undefined;
+    getCondaFile(): Promise<string>;
     getCondaInfo(): Promise<CondaInfo | undefined>;
     getCondaEnvironments(ignoreCache: boolean): Promise<CondaEnvironmentInfo[] | undefined>;
     getInterpreterPath(condaEnvironmentPath: string): string;
-    getCondaFileFromInterpreter(interpreterPath?: string, envName?: string): Promise<string | undefined>;
     isCondaEnvironment(interpreterPath: string): Promise<boolean>;
     getCondaEnvironment(interpreterPath: string): Promise<CondaEnvironmentInfo | undefined>;
 }
@@ -86,6 +121,7 @@ export interface IInterpreterService {
 export const IInterpreterDisplay = Symbol('IInterpreterDisplay');
 export interface IInterpreterDisplay {
     refresh(resource?: Uri): Promise<void>;
+    registerVisibilityFilter(filter: IInterpreterStatusbarVisibilityFilter): void;
 }
 
 export const IShebangCodeLensProvider = Symbol('IShebangCodeLensProvider');
@@ -123,16 +159,10 @@ export interface IInterpreterWatcherBuilder {
     getWorkspaceVirtualEnvInterpreterWatcher(resource: Resource): Promise<IInterpreterWatcher>;
 }
 
-export const IInterpreterLocatorProgressHandler = Symbol('IInterpreterLocatorProgressHandler');
-export interface IInterpreterLocatorProgressHandler {
-    register(): void;
-}
-
 export const IInterpreterLocatorProgressService = Symbol('IInterpreterLocatorProgressService');
-export interface IInterpreterLocatorProgressService {
+export interface IInterpreterLocatorProgressService extends IExtensionSingleActivationService {
     readonly onRefreshing: Event<void>;
     readonly onRefreshed: Event<void>;
-    register(): void;
 }
 
 export const IInterpreterStatusbarVisibilityFilter = Symbol('IInterpreterStatusbarVisibilityFilter');
@@ -149,8 +179,4 @@ export type WorkspacePythonPath = {
     configTarget: ConfigurationTarget.Workspace | ConfigurationTarget.WorkspaceFolder;
 };
 
-export type GetInterpreterOptions = {
-    onSuggestion?: boolean;
-};
-
-export type GetInterpreterLocatorOptions = GetInterpreterOptions & { ignoreCache?: boolean };
+export type GetInterpreterOptions = { ignoreCache?: boolean; onSuggestion?: boolean };

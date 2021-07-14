@@ -8,17 +8,18 @@ import { Architecture } from '../../../../client/common/utils/platform';
 import {
     PythonEnvInfo,
     PythonEnvKind,
-    PythonReleaseLevel,
+    PythonEnvSource,
     PythonVersion,
     UNKNOWN_PYTHON_VERSION,
 } from '../../../../client/pythonEnvironments/base/info';
+import { buildEnvInfo } from '../../../../client/pythonEnvironments/base/info/env';
 import { parseVersion } from '../../../../client/pythonEnvironments/base/info/pythonVersion';
 import { getEnvs } from '../../../../client/pythonEnvironments/base/locatorUtils';
 import * as winreg from '../../../../client/pythonEnvironments/common/windowsRegistry';
 import * as winutils from '../../../../client/pythonEnvironments/common/windowsUtils';
 import { WindowsRegistryLocator } from '../../../../client/pythonEnvironments/discovery/locators/services/windowsRegistryLocator';
 import { TEST_LAYOUT_ROOT } from '../../common/commonTestConstants';
-import { assertEnvEqual, assertEnvsEqual } from './envTestUtils';
+import { assertEnvsEqual } from './envTestUtils';
 
 suite('Windows Registry', () => {
     let stubReadRegistryValues: sinon.SinonStub;
@@ -222,7 +223,7 @@ suite('Windows Registry', () => {
             versionStr: data.find((x) => x.name === 'Version')?.value,
             sysVersionStr: data.find((x) => x.name === 'SysVersion')?.value,
             bitnessStr: data.find((x) => x.name === 'SysArchitecture')?.value,
-            displayName: data.find((x) => x.name === 'DisplayName')?.value,
+            companyDisplayName: data.find((x) => x.name === 'DisplayName')?.value,
             distroOrgName: org,
         });
     }
@@ -236,21 +237,17 @@ suite('Windows Registry', () => {
             version = UNKNOWN_PYTHON_VERSION;
         }
 
-        return {
-            name: '',
+        const env = buildEnvInfo({
             location: '',
             kind: PythonEnvKind.OtherGlobal,
-            executable: {
-                filename: data.interpreterPath,
-                sysPrefix: '',
-                ctime: -1,
-                mtime: -1,
-            },
+            executable: data.interpreterPath,
             version,
             arch: data.bitnessStr === '32bit' ? Architecture.x86 : Architecture.x64,
-            distro: { org: data.distroOrgName ?? '' },
-            defaultDisplayName: data.displayName,
-        };
+            org: data.distroOrgName ?? '',
+            source: [PythonEnvSource.WindowsRegistry],
+        });
+        env.distro.defaultDisplayName = data.companyDisplayName;
+        return env;
     }
 
     async function getExpectedDataFromKey({ arch, hive, key }: winreg.Options, org: string): Promise<PythonEnvInfo> {
@@ -340,58 +337,5 @@ suite('Windows Registry', () => {
         );
 
         assertEnvsEqual(actualEnvs, expectedEnvs);
-    });
-
-    test('resolveEnv(string)', async () => {
-        const expected: PythonEnvInfo = await getExpectedDataFromKey(
-            { arch: 'x64', hive: winreg.HKLM, key: '\\SOFTWARE\\Python\\PythonCore\\3.9' },
-            'PythonCore',
-        );
-        const interpreterPath = path.join(regTestRoot, 'py39', 'python.exe');
-
-        const actual = await locator.resolveEnv(interpreterPath);
-
-        assertEnvEqual(actual, expected);
-    });
-
-    test('resolveEnv(PythonEnvInfo)', async () => {
-        const expected: PythonEnvInfo = await getExpectedDataFromKey(
-            { arch: 'x64', hive: winreg.HKLM, key: '\\SOFTWARE\\Python\\PythonCore\\3.9' },
-            'PythonCore',
-        );
-        const interpreterPath = path.join(regTestRoot, 'py39', 'python.exe');
-
-        // Partially filled in env info object
-        const input: PythonEnvInfo = {
-            name: '',
-            location: '',
-            kind: PythonEnvKind.Unknown,
-            distro: { org: '' },
-            arch: Architecture.x64,
-            executable: {
-                filename: interpreterPath,
-                sysPrefix: '',
-                ctime: -1,
-                mtime: -1,
-            },
-            version: {
-                major: -1,
-                minor: -1,
-                micro: -1,
-                release: { level: PythonReleaseLevel.Final, serial: -1 },
-            },
-        };
-
-        const actual = await locator.resolveEnv(input);
-
-        assertEnvEqual(actual, expected);
-    });
-
-    test('resolveEnv(string): unknown interpreter', async () => {
-        const interpreterPath = path.join(regTestRoot, 'unknown_python.exe');
-
-        const actual = await locator.resolveEnv(interpreterPath);
-
-        assert.deepStrictEqual(actual, undefined);
     });
 });

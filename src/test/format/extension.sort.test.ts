@@ -28,15 +28,13 @@ suite('Sorting', () => {
     let sorter: ISortImportsEditingProvider;
     const configTarget = IS_MULTI_ROOT_TEST ? ConfigurationTarget.WorkspaceFolder : ConfigurationTarget.Workspace;
     suiteSetup(async function () {
-        const pythonVersion = process.env.CI_PYTHON_VERSION // GHA uses this
-            ? parseFloat(process.env.CI_PYTHON_VERSION)
-            : process.env.PythonVersion // Azdo uses this
-            ? parseFloat(process.env.PythonVersion)
-            : undefined;
+        const pythonVersion = process.env.CI_PYTHON_VERSION ? parseFloat(process.env.CI_PYTHON_VERSION) : undefined;
         if (pythonVersion && pythonVersion < 3) {
             return this.skip();
         }
         await initialize();
+
+        return undefined;
     });
     suiteTeardown(async () => {
         fs.writeFileSync(fileToFormatWithConfig, fs.readFileSync(originalFileToFormatWithConfig));
@@ -48,7 +46,7 @@ suite('Sorting', () => {
     setup(async function () {
         this.timeout(TEST_TIMEOUT * 2);
         await initializeTest();
-        initializeDI();
+        await initializeDI();
         fs.writeFileSync(fileToFormatWithConfig, fs.readFileSync(originalFileToFormatWithConfig));
         fs.writeFileSync(fileToFormatWithoutConfig, fs.readFileSync(originalFileToFormatWithoutConfig));
         fs.writeFileSync(fileToFormatWithConfig1, fs.readFileSync(originalFileToFormatWithConfig1));
@@ -60,13 +58,13 @@ suite('Sorting', () => {
         await ioc.dispose();
         await closeActiveWindows();
     });
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerVariableTypes();
         ioc.registerProcessTypes();
         ioc.registerInterpreterStorageTypes();
-        ioc.registerMockInterpreterTypes();
+        await ioc.registerMockInterpreterTypes();
         ioc.serviceManager.rebindInstance<ICondaService>(ICondaService, instance(mock(CondaService)));
         ioc.serviceManager.rebindInstance<IInterpreterService>(IInterpreterService, instance(mock(InterpreterService)));
     }

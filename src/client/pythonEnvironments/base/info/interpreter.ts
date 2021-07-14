@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 
 import { PythonExecutableInfo, PythonVersion } from '.';
+import { traceError, traceInfo } from '../../../common/logger';
 import {
     interpreterInfo as getInterpreterInfoCommand,
     InterpreterInfoJson,
 } from '../../../common/process/internal/scripts';
 import { Architecture } from '../../../common/utils/platform';
+import { shellExecute } from '../../common/externalDependencies';
 import { copyPythonExecInfo, PythonExecInfo } from '../../exec';
 import { parseVersion } from './pythonVersion';
 
@@ -25,7 +27,24 @@ export type InterpreterInformation = {
  * @param raw - the information returned by the `interpreterInfo.py` script
  */
 function extractInterpreterInfo(python: string, raw: InterpreterInfoJson): InterpreterInformation {
-    const rawVersion = `${raw.versionInfo.slice(0, 3).join('.')}-${raw.versionInfo[3]}`;
+    let rawVersion = `${raw.versionInfo.slice(0, 3).join('.')}`;
+
+    // We only need additional version details if the version is 'alpha', 'beta' or 'candidate'.
+    // This restriction is needed to avoid sending any PII if this data is used with telemetry.
+    // With custom builds of python it is possible that release level and values after that can
+    // contain PII.
+    if (raw.versionInfo[3] !== undefined && ['final', 'alpha', 'beta', 'candidate'].includes(raw.versionInfo[3])) {
+        rawVersion = `${rawVersion}-${raw.versionInfo[3]}`;
+        if (raw.versionInfo[4] !== undefined) {
+            let serial = -1;
+            try {
+                serial = parseInt(`${raw.versionInfo[4]}`, 10);
+            } catch (ex) {
+                serial = -1;
+            }
+            rawVersion = serial >= 0 ? `${rawVersion}${serial}` : rawVersion;
+        }
+    }
     return {
         arch: raw.is64Bit ? Architecture.x64 : Architecture.x86,
         executable: {
@@ -41,18 +60,6 @@ function extractInterpreterInfo(python: string, raw: InterpreterInfoJson): Inter
     };
 }
 
-type ShellExecResult = {
-    stdout: string;
-    stderr?: string;
-};
-type ShellExecFunc = (command: string, timeout: number) => Promise<ShellExecResult>;
-
-type Logger = {
-    info(msg: string): void;
-
-    error(msg: string): void;
-};
-
 /**
  * Collect full interpreter information from the given Python executable.
  *
@@ -60,11 +67,7 @@ type Logger = {
  * @param shellExec - the function to use to exec Python
  * @param logger - if provided, used to log failures or other info
  */
-export async function getInterpreterInfo(
-    python: PythonExecInfo,
-    shellExec: ShellExecFunc,
-    logger?: Logger,
-): Promise<InterpreterInformation | undefined> {
+export async function getInterpreterInfo(python: PythonExecInfo): Promise<InterpreterInformation | undefined> {
     const [args, parse] = getInterpreterInfoCommand();
     const info = copyPythonExecInfo(python, args);
     const argv = [info.command, ...info.args];
@@ -78,16 +81,12 @@ export async function getInterpreterInfo(
     // See these two bugs:
     // https://github.com/microsoft/vscode-python/issues/7569
     // https://github.com/microsoft/vscode-python/issues/7760
-    const result = await shellExec(quoted, 15000);
+    const result = await shellExecute(quoted, { timeout: 15000 });
     if (result.stderr) {
-        if (logger) {
-            logger.error(`Failed to parse interpreter information for ${argv} stderr: ${result.stderr}`);
-        }
+        traceError(`Failed to parse interpreter information for ${argv} stderr: ${result.stderr}`);
         return undefined;
     }
     const json = parse(result.stdout);
-    if (logger) {
-        logger.info(`Found interpreter for ${argv}`);
-    }
+    traceInfo(`Found interpreter for ${argv}`);
     return extractInterpreterInfo(python.pythonExecutable, json);
 }

@@ -5,7 +5,10 @@
 
 import * as path from 'path';
 import { EXTENSION_ROOT_DIR } from '../../constants';
+import { Octicons } from '../constants';
 import { FileSystem } from '../platform/fileSystem';
+
+/* eslint-disable @typescript-eslint/no-namespace, no-shadow */
 
 // External callers of localize use these tables to retrieve localized values.
 export namespace Diagnostics {
@@ -32,7 +35,7 @@ export namespace Diagnostics {
     );
     export const removedPythonPathFromSettings = localize(
         'diagnostics.removedPythonPathFromSettings',
-        'We removed the "python.pythonPath" setting from your settings.json file as the setting is no longer used by the Python extension. You can get the path of your selected interpreter in the Python output channel. [Learn more](https://aka.ms/AA7jfor).',
+        'The "python.pythonPath" setting in your settings.json is no longer used by the Python extension. If you want, you can use a new setting called "python.defaultInterpreterPath" instead. Keep in mind that you need to change the value of this setting manually as the Python extension doesn’t modify it when you change interpreters. [Learn more](https://aka.ms/AA7jfor).',
     );
     export const invalidPythonPathInDebuggerSettings = localize(
         'diagnostics.invalidPythonPathInDebuggerSettings',
@@ -63,6 +66,10 @@ export namespace Diagnostics {
     export const checkIsort5UpgradeGuide = localize(
         'diagnostics.checkIsort5UpgradeGuide',
         'We found outdated configuration for sorting imports in this workspace. Check the [isort upgrade guide](https://aka.ms/AA9j5x4) to update your settings.',
+    );
+    export const pylanceDefaultMessage = localize(
+        'diagnostics.pylanceDefaultMessage',
+        'The Python extension now includes Pylance to improve completions, code navigation, overall performance and much more! You can learn more about the update and learn how to change your language server [here](https://aka.ms/new-python-bundle).\n\nRead Pylance’s license [here](https://marketplace.visualstudio.com/items/ms-python.vscode-pylance/license).',
     );
 }
 
@@ -105,17 +112,8 @@ export namespace AttachProcess {
 }
 
 export namespace Pylance {
-    export const proposePylanceMessage = localize(
-        'Pylance.proposePylanceMessage',
-        'Try out a new faster, feature-rich language server for Python by Microsoft, Pylance! Install the extension now.',
-    );
-    export const tryItNow = localize('Pylance.tryItNow', 'Try it now');
     export const remindMeLater = localize('Pylance.remindMeLater', 'Remind me later');
 
-    export const installPylanceMessage = localize(
-        'Pylance.installPylanceMessage',
-        'Pylance extension is not installed. Click Yes to open Pylance installation page.',
-    );
     export const pylanceNotInstalledMessage = localize(
         'Pylance.pylanceNotInstalledMessage',
         'Pylance extension is not installed.',
@@ -124,16 +122,28 @@ export namespace Pylance {
         'Pylance.pylanceInstalledReloadPromptMessage',
         'Pylance extension is now installed. Reload window to activate?',
     );
+
+    export const pylanceRevertToJediPrompt = localize(
+        'Pylance.pylanceRevertToJediPrompt',
+        'The Pylance extension is not installed but the python.languageServer value is set to "Pylance". Would you like to install the Pylance extension to use Pylance, or revert back to Jedi?',
+    );
+    export const pylanceInstallPylance = localize('Pylance.pylanceInstallPylance', 'Install Pylance');
+    export const pylanceRevertToJedi = localize('Pylance.pylanceRevertToJedi', 'Revert to Jedi');
 }
 
 export namespace Jupyter {
-    export const jupyterExtensionRequired = localize(
-        'Jupyter.extensionRequired',
-        'The Jupyter extension is required to perform that task. Click Yes to open the Jupyter extension installation page.',
+    export const jupyterExtensionNotInstalled = localize(
+        'Jupyter.extensionNotInstalled',
+        "This feature is available in the Jupyter extension, which isn't currently installed.",
     );
 }
 
 export namespace TensorBoard {
+    export const enterRemoteUrl = localize('TensorBoard.enterRemoteUrl', 'Enter remote URL');
+    export const enterRemoteUrlDetail = localize(
+        'TensorBoard.enterRemoteUrlDetail',
+        'Enter a URL pointing to a remote directory containing your TensorBoard log files',
+    );
     export const useCurrentWorkingDirectoryDetail = localize(
         'TensorBoard.useCurrentWorkingDirectoryDetail',
         'TensorBoard will search for tfevent files in all subdirectories of the current working directory',
@@ -170,6 +180,18 @@ export namespace TensorBoard {
         'TensorBoard.installPrompt',
         'The package TensorBoard is required to launch a TensorBoard session. Would you like to install it?',
     );
+    export const installTensorBoardAndProfilerPluginPrompt = localize(
+        'TensorBoard.installTensorBoardAndProfilerPluginPrompt',
+        'TensorBoard >= 2.4.1 and the PyTorch Profiler TensorBoard plugin >= 0.2.0 are required. Would you like to install these packages?',
+    );
+    export const installProfilerPluginPrompt = localize(
+        'TensorBoard.installProfilerPluginPrompt',
+        'We recommend installing version >= 0.2.0 of the PyTorch Profiler TensorBoard plugin. Would you like to install the package?',
+    );
+    export const upgradePrompt = localize(
+        'TensorBoard.upgradePrompt',
+        'Integrated TensorBoard support is only available for TensorBoard >= 2.4.1. Would you like to upgrade your copy of TensorBoard?',
+    );
     export const launchNativeTensorBoardSessionCodeLens = localize(
         'TensorBoard.launchNativeTensorBoardSessionCodeLens',
         '▶ Launch TensorBoard Session',
@@ -177,6 +199,15 @@ export namespace TensorBoard {
     export const launchNativeTensorBoardSessionCodeAction = localize(
         'TensorBoard.launchNativeTensorBoardSessionCodeAction',
         'Launch TensorBoard session',
+    );
+    export const missingSourceFile = localize(
+        'TensorBoard.missingSourceFile',
+        'We could not locate the requested source file on disk. Please manually specify the file.',
+    );
+    export const selectMissingSourceFile = localize('TensorBoard.selectMissingSourceFile', 'Choose File');
+    export const selectMissingSourceFileDescription = localize(
+        'TensorBoard.selectMissingSourceFileDescription',
+        "The source file's contents may not match the original contents in the trace.",
     );
 }
 
@@ -187,6 +218,7 @@ export namespace LanguageService {
         'Starting Microsoft Python language server.',
     );
     export const startingPylance = localize('LanguageService.startingPylance', 'Starting Pylance language server.');
+    export const startingJediLSP = localize('LanguageService.startingJediLSP', 'Starting Jedi language server.');
     export const startingNone = localize(
         'LanguageService.startingNone',
         'Editor support is inactive since language server is set to None.',
@@ -234,6 +266,7 @@ export namespace Http {
 }
 export namespace Experiments {
     export const inGroup = localize('Experiments.inGroup', "User belongs to experiment group '{0}'");
+    export const optedOutOf = localize('Experiments.optedOutOf', "User opted out of experiment group '{0}'");
 }
 export namespace Interpreters {
     export const loading = localize('Interpreters.LoadingInterpreters', 'Loading Python Interpreters');
@@ -241,10 +274,6 @@ export namespace Interpreters {
     export const condaInheritEnvMessage = localize(
         'Interpreters.condaInheritEnvMessage',
         'We noticed you\'re using a conda environment. If you are experiencing issues with this environment in the integrated terminal, we recommend that you let the Python extension change "terminal.integrated.inheritEnv" to false in your user settings.',
-    );
-    export const unsafeInterpreterMessage = localize(
-        'Interpreters.unsafeInterpreterMessage',
-        'We found a Python environment in this workspace. Do you want to select it to start up the features in the Python extension? Only accept if you trust this environment.',
     );
     export const environmentPromptMessage = localize(
         'Interpreters.environmentPromptMessage',
@@ -268,6 +297,28 @@ export namespace InterpreterQuickPickList {
         label: localize('InterpreterQuickPickList.enterPath.label', 'Enter interpreter path...'),
         placeholder: localize('InterpreterQuickPickList.enterPath.placeholder', 'Enter path to a Python interpreter.'),
     };
+    export const defaultInterpreterPath = {
+        label: (): string => {
+            const labelText = localize(
+                'InterpreterQuickPickList.defaultInterpreterPath.label',
+                'Use default Python interpreter path',
+            );
+            return `${Octicons.Star} ${labelText()}`;
+        },
+    };
+    export const findPath = {
+        detail: localize(
+            'InterpreterQuickPickList.findPath.detail',
+            'Browse the file system to find a Python interpreter.',
+        ),
+        label: (): string => {
+            const labelText = localize(
+                'InterpreterQuickPickList.findPath.label',
+                "I can't find the interpreter I want to select...",
+            );
+            return `${Octicons.Search_Stop} ${labelText()}`;
+        },
+    };
     export const browsePath = {
         label: localize('InterpreterQuickPickList.browsePath.label', 'Find...'),
         detail: localize(
@@ -277,6 +328,10 @@ export namespace InterpreterQuickPickList {
         openButtonLabel: localize('python.command.python.setInterpreter.title', 'Select Interpreter'),
         title: localize('InterpreterQuickPickList.browsePath.title', 'Select Python interpreter'),
     };
+    export const refreshInterpreterList = localize(
+        'InterpreterQuickPickList.refreshInterpreterList',
+        'Refresh Interpreter list',
+    );
 }
 export namespace ExtensionChannels {
     export const yesWeekly = localize('ExtensionChannels.yesWeekly', 'Yes, weekly');
@@ -366,6 +421,10 @@ export namespace ExtensionSurveyBanner {
     export const bannerLabelYes = localize('ExtensionSurveyBanner.bannerLabelYes', 'Yes, take survey now');
     export const bannerLabelNo = localize('ExtensionSurveyBanner.bannerLabelNo', 'No, thanks');
     export const maybeLater = localize('ExtensionSurveyBanner.maybeLater', 'Maybe later');
+    export const mplsMessage = localize(
+        'ExtensionSurveyBanner.mplsMessage',
+        'Can you please take 2 minutes to tell us about your experience using the Microsoft Python Language Server?',
+    );
 }
 
 export namespace Products {
@@ -378,7 +437,7 @@ export namespace StartPage {
     export const createJupyterNotebook = localize('StartPage.createJupyterNotebook', 'Create a Jupyter Notebook');
     export const notebookDescription = localize(
         'StartPage.notebookDescription',
-        '- Run "<div class="link italics" role="button" onclick={0}>Create New Blank Jupyter Notebook</div>" in the Command Palette (<div class="italics">Shift + Command + P</div>)<br />- Explore our <div class="link" role="button" onclick={1}>sample notebook</div> to learn about notebook features',
+        '- Run "<div class="link italics" role="button" onclick={0}>Create New Blank Notebook</div>" in the Command Palette (<div class="italics">Shift + Command + P</div>)<br />- Explore our <div class="link" role="button" onclick={1}>sample notebook</div> to learn about notebook features',
     );
     export const createAPythonFile = localize('StartPage.createAPythonFile', 'Create a Python File');
     export const pythonFileDescription = localize(
@@ -391,7 +450,7 @@ export namespace StartPage {
     );
     export const interactiveWindowDesc = localize(
         'StartPage.interactiveWindowDesc',
-        '- You can create cells on a Python file by typing "#%%" <br /> - Use "<div class="italics">Shift + Enter</div> " to run a cell, the output will be shown in the interactive window',
+        '- You can create cells on a Python file by typing "#%%". Make sure you have the Jupyter extension installed. <br /> - Use "<div class="italics">Shift + Enter</div> " to run a cell, the output will be shown in the interactive window',
     );
 
     export const releaseNotes = localize(
@@ -401,6 +460,10 @@ export namespace StartPage {
     export const tutorialAndDoc = localize(
         'StartPage.tutorialAndDoc',
         'Explore more features in our <a class="link" href={0}>Tutorials</a> or check <a class="link" href={1}>Documentation</a> for tips and troubleshooting.',
+    );
+    export const mailingList = localize(
+        'StartPage.mailingList',
+        '<a class="link" href={0}>Sign up</a> for tips and tutorials through our mailing list.',
     );
     export const dontShowAgain = localize('StartPage.dontShowAgain', "Don't show this page again");
     export const helloWorld = localize('StartPage.helloWorld', 'Hello world');
@@ -570,14 +633,14 @@ let askedForCollection: Record<string, string> = {};
 let loadedLocale: string;
 
 // This is exported only for testing purposes.
-export function _resetCollections() {
+export function _resetCollections(): void {
     loadedLocale = '';
     loadedCollection = undefined;
     askedForCollection = {};
 }
 
 // This is exported only for testing purposes.
-export function _getAskedForCollection() {
+export function _getAskedForCollection(): Record<string, string> {
     return askedForCollection;
 }
 
@@ -596,9 +659,7 @@ export function getCollectionJSON(): string {
 
 export function localize(key: string, defValue?: string) {
     // Return a pointer to function so that we refetch it on each call.
-    return () => {
-        return getString(key, defValue);
-    };
+    return (): string => getString(key, defValue);
 }
 
 function parseLocale(): string {

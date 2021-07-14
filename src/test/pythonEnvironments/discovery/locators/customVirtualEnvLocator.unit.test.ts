@@ -9,6 +9,7 @@ import * as platformUtils from '../../../../client/common/utils/platform';
 import {
     PythonEnvInfo,
     PythonEnvKind,
+    PythonEnvSource,
     PythonReleaseLevel,
     PythonVersion,
     UNKNOWN_PYTHON_VERSION,
@@ -22,11 +23,11 @@ import {
     VENVPATH_SETTING_KEY,
 } from '../../../../client/pythonEnvironments/discovery/locators/services/customVirtualEnvLocator';
 import { TEST_LAYOUT_ROOT } from '../../common/commonTestConstants';
-import { assertEnvEqual, assertEnvsEqual } from './envTestUtils';
+import { assertEnvsEqual } from './envTestUtils';
 
 suite('CustomVirtualEnvironment Locator', () => {
     const testVirtualHomeDir = path.join(TEST_LAYOUT_ROOT, 'virtualhome');
-    const testVenvPath = path.join(testVirtualHomeDir, 'customfolder');
+    const testVenvPathWithTilda = path.join('~', 'customfolder');
     let getUserHomeDirStub: sinon.SinonStub;
     let getOSTypeStub: sinon.SinonStub;
     let readFileStub: sinon.SinonStub;
@@ -34,6 +35,7 @@ suite('CustomVirtualEnvironment Locator', () => {
     let watchLocationForPatternStub: sinon.SinonStub;
     let getPythonSettingStub: sinon.SinonStub;
     let onDidChangePythonSettingStub: sinon.SinonStub;
+    let untildify: sinon.SinonStub;
 
     function createExpectedEnvInfo(
         interpreterPath: string,
@@ -52,11 +54,12 @@ suite('CustomVirtualEnvironment Locator', () => {
                 ctime: -1,
                 mtime: -1,
             },
-            defaultDisplayName: undefined,
+            display: undefined,
             version,
             arch: platformUtils.Architecture.Unknown,
             distro: { org: '' },
             searchLocation: undefined,
+            source: [PythonEnvSource.Other],
         };
     }
 
@@ -67,6 +70,8 @@ suite('CustomVirtualEnvironment Locator', () => {
     }
 
     setup(async () => {
+        untildify = sinon.stub(externalDependencies, 'untildify');
+        untildify.callsFake((value: string) => value.replace('~', testVirtualHomeDir));
         getUserHomeDirStub = sinon.stub(platformUtils, 'getUserHomeDir');
         getUserHomeDirStub.returns(testVirtualHomeDir);
         getPythonSettingStub = sinon.stub(externalDependencies, 'getPythonSetting');
@@ -104,16 +109,11 @@ suite('CustomVirtualEnvironment Locator', () => {
     });
     teardown(async () => {
         await locator.dispose();
-        readFileStub.restore();
-        getPythonSettingStub.restore();
-        onDidChangePythonSettingStub.restore();
-        getUserHomeDirStub.restore();
-        getOSTypeStub.restore();
-        watchLocationForPatternStub.restore();
+        sinon.restore();
     });
 
     test('iterEnvs(): Windows with both settings set', async () => {
-        getPythonSettingStub.withArgs('venvPath').returns(testVenvPath);
+        getPythonSettingStub.withArgs('venvPath').returns(testVenvPathWithTilda);
         getPythonSettingStub.withArgs('venvFolders').returns(['.venvs', '.virtualenvs', 'Envs']);
         getOSTypeStub.returns(platformUtils.OSType.Windows);
         const expectedEnvs = [
@@ -260,7 +260,7 @@ suite('CustomVirtualEnvironment Locator', () => {
     test('iterEnvs(): No User home dir set', async () => {
         getUserHomeDirStub.returns(undefined);
 
-        getPythonSettingStub.withArgs('venvPath').returns(testVenvPath);
+        getPythonSettingStub.withArgs('venvPath').returns(testVenvPathWithTilda);
         getPythonSettingStub.withArgs('venvFolders').returns(['.venvs', '.virtualenvs', 'Envs']);
         getOSTypeStub.returns(platformUtils.OSType.Windows);
         const expectedEnvs = [
@@ -373,60 +373,6 @@ suite('CustomVirtualEnvironment Locator', () => {
 
         comparePaths(actualEnvs, expectedEnvs);
         assertEnvsEqual(actualEnvs, expectedEnvs);
-    });
-
-    test('resolveEnv(string)', async () => {
-        const interpreterPath = path.join(testVirtualHomeDir, '.venvs', 'posix1', 'python');
-        const expected = createExpectedEnvInfo(
-            path.join(testVirtualHomeDir, '.venvs', 'posix1', 'python'),
-            PythonEnvKind.Venv,
-            undefined,
-            'posix1',
-            path.join(testVirtualHomeDir, '.venvs', 'posix1'),
-        );
-
-        const actual = await locator.resolveEnv(interpreterPath);
-
-        assertEnvEqual(actual, expected);
-    });
-
-    test('resolveEnv(PythonEnvInfo)', async () => {
-        const interpreterPath = path.join(testVirtualHomeDir, 'customfolder', 'posix1', 'python');
-        const expected = createExpectedEnvInfo(
-            path.join(testVirtualHomeDir, 'customfolder', 'posix1', 'python'),
-            PythonEnvKind.VirtualEnv,
-            { major: 3, minor: 5, micro: -1 },
-            'posix1',
-            path.join(testVirtualHomeDir, 'customfolder', 'posix1'),
-        );
-
-        // Partially filled in env info object
-        const input: PythonEnvInfo = {
-            name: '',
-            location: '',
-            kind: PythonEnvKind.Unknown,
-            distro: { org: '' },
-            arch: platformUtils.Architecture.Unknown,
-            executable: {
-                filename: interpreterPath,
-                sysPrefix: '',
-                ctime: -1,
-                mtime: -1,
-            },
-            version: UNKNOWN_PYTHON_VERSION,
-        };
-
-        const actual = await locator.resolveEnv(input);
-
-        assertEnvEqual(actual, expected);
-    });
-
-    test('resolveEnv(string): non existent path', async () => {
-        const interpreterPath = path.join('some', 'random', 'nonvenv', 'python');
-
-        const actual = await locator.resolveEnv(interpreterPath);
-
-        assert.deepStrictEqual(actual, undefined);
     });
 
     test('onChanged fires if venvPath setting changes', async () => {

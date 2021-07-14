@@ -7,8 +7,11 @@ import { IServiceContainer } from '../../ioc/types';
 import { NOSETEST_PROVIDER } from '../common/constants';
 import { Options } from '../common/runner';
 import {
+    IArgumentsHelper,
+    IArgumentsService,
     ITestDebugLauncher,
     ITestManager,
+    ITestManagerRunner,
     ITestResultsService,
     ITestRunner,
     IXUnitParser,
@@ -16,7 +19,6 @@ import {
     TestRunOptions,
     Tests,
 } from '../common/types';
-import { IArgumentsHelper, IArgumentsService, ITestManagerRunner } from '../types';
 
 const WITH_XUNIT = '--with-xunit';
 const XUNIT_FILE = '--xunit-file';
@@ -85,7 +87,7 @@ export class TestManagerRunner implements ITestManagerRunner {
                 await debugLauncher.launchDebugger(launchOptions);
             } else {
                 const runOptions: Options = {
-                    args: testArgs.concat(testPaths),
+                    args: testArgs,
                     cwd: options.cwd,
                     outChannel: options.outChannel,
                     token: options.token,
@@ -94,9 +96,8 @@ export class TestManagerRunner implements ITestManagerRunner {
                 await this.testRunner.run(NOSETEST_PROVIDER, runOptions);
             }
 
-            return options.debug
-                ? options.tests
-                : await this.updateResultsFromLogFiles(options.tests, xmlLogFile, testResultsService);
+            // Promise must resolve before return as result file will be deleted in finally block.
+            return await this.updateResultsFromLogFiles(options.tests, xmlLogFile, testResultsService);
         } catch (ex) {
             return Promise.reject<Tests>(ex);
         } finally {

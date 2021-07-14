@@ -77,19 +77,28 @@ gulp.task('webpack', async () => {
     await buildWebPackForDevOrProduction('./build/webpack/webpack.extension.config.js', 'extension');
 });
 
-gulp.task('addExtensionDependencies', async () => {
-    await addExtensionDependencies();
+gulp.task('addExtensionPackDependencies', async () => {
+    await buildLicense();
+    await addExtensionPackDependencies();
 });
 
-async function addExtensionDependencies() {
-    // Update the package.json to add extension dependencies at build time so that
+async function addExtensionPackDependencies() {
+    // Update the package.json to add extension pack dependencies at build time so that
     // extension dependencies need not be installed during development
     const packageJsonContents = await fsExtra.readFile('package.json', 'utf-8');
     const packageJson = JSON.parse(packageJsonContents);
-    packageJson.extensionDependencies = ['ms-toolsai.jupyter'].concat(
-        packageJson.extensionDependencies ? packageJson.extensionDependencies : [],
+    packageJson.extensionPack = ['ms-toolsai.jupyter', 'ms-python.vscode-pylance'].concat(
+        packageJson.extensionPack ? packageJson.extensionPack : [],
     );
     await fsExtra.writeFile('package.json', JSON.stringify(packageJson, null, 4), 'utf-8');
+}
+
+async function buildLicense() {
+    const headerPath = path.join(__dirname, 'build', 'license-header.txt');
+    const licenseHeader = await fsExtra.readFile(headerPath, 'utf-8');
+    const license = await fsExtra.readFile('LICENSE', 'utf-8');
+
+    await fsExtra.writeFile('LICENSE', `${licenseHeader}\n${license}`, 'utf-8');
 }
 
 gulp.task('updateBuildNumber', async () => {
@@ -215,7 +224,7 @@ gulp.task('checkDependencies', gulp.series('checkNativeDependencies'));
 gulp.task('prePublishNonBundle', gulp.series('compile', 'compile-webviews'));
 
 gulp.task('installPythonRequirements', async () => {
-    const args = [
+    let args = [
         '-m',
         'pip',
         '--disable-pip-version-check',
@@ -230,7 +239,36 @@ gulp.task('installPythonRequirements', async () => {
         '-r',
         './requirements.txt',
     ];
-    const success = await spawnAsync(process.env.CI_PYTHON_PATH || 'python3', args, undefined, true)
+    let success = await spawnAsync(process.env.CI_PYTHON_PATH || 'python3', args, undefined, true)
+        .then(() => true)
+        .catch((ex) => {
+            console.error("Failed to install Python Libs using 'python3'", ex);
+            return false;
+        });
+    if (!success) {
+        console.info("Failed to install Python Libs using 'python3', attempting to install using 'python'");
+        await spawnAsync('python', args).catch((ex) =>
+            console.error("Failed to install Python Libs using 'python'", ex),
+        );
+        return;
+    }
+
+    args = [
+        '-m',
+        'pip',
+        '--disable-pip-version-check',
+        'install',
+        '-t',
+        './pythonFiles/lib/jedilsp',
+        '--no-cache-dir',
+        '--implementation',
+        'py',
+        '--no-deps',
+        '--upgrade',
+        '-r',
+        './jedils_requirements.txt',
+    ];
+    success = await spawnAsync(process.env.CI_PYTHON_PATH || 'python3', args, undefined, true)
         .then(() => true)
         .catch((ex) => {
             console.error("Failed to install Python Libs using 'python3'", ex);
@@ -329,7 +367,7 @@ function hasNativeDependencies() {
         path.dirname(item.substring(item.indexOf('node_modules') + 'node_modules'.length)).split(path.sep),
     )
         .filter((item) => item.length > 0)
-        .filter((item) => !item.includes('zeromq') && item !== 'fsevents') // This is a known native. Allow this one for now
+        .filter((item) => !item.includes('zeromq') && item !== 'fsevents' && !item.includes('canvas')) // This is a known native. Allow this one for now
         .filter(
             (item) =>
                 jsonProperties.findIndex((flattenedDependency) =>

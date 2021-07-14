@@ -19,7 +19,7 @@ const namedRegexp = require('named-js-regexp');
 // Allow codes with more than one letter (i.e. ABC123)
 const REGEX = '(?<line>\\d+),(?<column>-?\\d+),(?<type>\\w+),(?<code>\\w+\\d+):(?<message>.*)\\r?(\\n|$)';
 
-export interface IRegexGroup {
+interface IRegexGroup {
     line: number;
     column: number;
     code: string;
@@ -27,7 +27,7 @@ export interface IRegexGroup {
     type: string;
 }
 
-export function matchNamedRegEx(data: string, regex: string): IRegexGroup | undefined {
+function matchNamedRegEx(data: string, regex: string): IRegexGroup | undefined {
     const compiledRegexp = namedRegexp(regex, 'g');
     const rawMatch = compiledRegexp.exec(data);
     if (rawMatch !== null) {
@@ -101,6 +101,10 @@ export abstract class BaseLinter implements ILinter {
             workspaceFolder && typeof workspaceFolder.uri.fsPath === 'string' ? workspaceFolder.uri.fsPath : undefined;
         return typeof workspaceRootPath === 'string' ? workspaceRootPath : path.dirname(document.uri.fsPath);
     }
+
+    protected getWorkingDirectoryPath(document: vscode.TextDocument): string {
+        return this._pythonSettings.linting.cwd || this.getWorkspaceRootPath(document);
+    }
     protected abstract runLinter(
         document: vscode.TextDocument,
         cancellation: vscode.CancellationToken,
@@ -138,7 +142,7 @@ export abstract class BaseLinter implements ILinter {
             return [];
         }
         const executionInfo = this.info.getExecutionInfo(args, document.uri);
-        const cwd = this.getWorkspaceRootPath(document);
+        const cwd = this.getWorkingDirectoryPath(document);
         const pythonToolsExecutionService = this.serviceContainer.get<IPythonToolExecutionService>(
             IPythonToolExecutionService,
         );

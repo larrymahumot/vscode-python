@@ -5,9 +5,9 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as platformApis from '../../../client/common/utils/platform';
+import { PythonEnvKind } from '../../../client/pythonEnvironments/base/info';
 import { identifyEnvironment } from '../../../client/pythonEnvironments/common/environmentIdentifier';
 import * as externalDependencies from '../../../client/pythonEnvironments/common/externalDependencies';
-import { EnvironmentType } from '../../../client/pythonEnvironments/info';
 import { getOSType as getOSTypeForTest, OSType } from '../../common';
 import { TEST_LAYOUT_ROOT } from './commonTestConstants';
 
@@ -15,13 +15,13 @@ suite('Environment Identifier', () => {
     suite('Conda', () => {
         test('Conda layout with conda-meta and python binary in the same directory', async () => {
             const interpreterPath: string = path.join(TEST_LAYOUT_ROOT, 'conda1', 'python.exe');
-            const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-            assert.deepEqual(envType, EnvironmentType.Conda);
+            const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+            assert.deepEqual(envType, PythonEnvKind.Conda);
         });
         test('Conda layout with conda-meta and python binary in a sub directory', async () => {
             const interpreterPath: string = path.join(TEST_LAYOUT_ROOT, 'conda2', 'bin', 'python');
-            const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-            assert.deepEqual(envType, EnvironmentType.Conda);
+            const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+            assert.deepEqual(envType, PythonEnvKind.Conda);
         });
     });
 
@@ -57,9 +57,9 @@ suite('Environment Identifier', () => {
                 'python',
             );
 
-            const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
+            const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
 
-            assert.equal(envType, EnvironmentType.Pipenv);
+            assert.equal(envType, PythonEnvKind.Pipenv);
         });
 
         test('Path to a local pipenv environment with a custom Pipfile name', async () => {
@@ -73,14 +73,15 @@ suite('Environment Identifier', () => {
                 'python.exe',
             );
 
-            const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
+            const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
 
-            assert.equal(envType, EnvironmentType.Pipenv);
+            assert.equal(envType, PythonEnvKind.Pipenv);
         });
     });
 
     suite('Windows Store', () => {
         let getEnvVar: sinon.SinonStub;
+        let pathExists: sinon.SinonStub;
         const fakeLocalAppDataPath = path.join(TEST_LAYOUT_ROOT, 'storeApps');
         const fakeProgramFilesPath = 'X:\\Program Files';
         const executable = ['python.exe', 'python3.exe', 'python3.8.exe'];
@@ -88,17 +89,23 @@ suite('Environment Identifier', () => {
             getEnvVar = sinon.stub(platformApis, 'getEnvironmentVariable');
             getEnvVar.withArgs('LOCALAPPDATA').returns(fakeLocalAppDataPath);
             getEnvVar.withArgs('ProgramFiles').returns(fakeProgramFilesPath);
+
+            pathExists = sinon.stub(externalDependencies, 'pathExists');
+            pathExists.withArgs(path.join(fakeLocalAppDataPath, 'Microsoft', 'WindowsApps', 'idle.exe')).resolves(true);
         });
         suiteTeardown(() => {
             getEnvVar.restore();
+            pathExists.restore();
         });
         executable.forEach((exe) => {
             test(`Path to local app data windows store interpreter (${exe})`, async () => {
+                getEnvVar.withArgs('LOCALAPPDATA').returns(fakeLocalAppDataPath);
                 const interpreterPath = path.join(fakeLocalAppDataPath, 'Microsoft', 'WindowsApps', exe);
-                const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-                assert.deepEqual(envType, EnvironmentType.WindowsStore);
+                const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+                assert.deepEqual(envType, PythonEnvKind.WindowsStore);
             });
             test(`Path to local app data windows store interpreter app sub-directory (${exe})`, async () => {
+                getEnvVar.withArgs('LOCALAPPDATA').returns(fakeLocalAppDataPath);
                 const interpreterPath = path.join(
                     fakeLocalAppDataPath,
                     'Microsoft',
@@ -106,8 +113,8 @@ suite('Environment Identifier', () => {
                     'PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0',
                     exe,
                 );
-                const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-                assert.deepEqual(envType, EnvironmentType.WindowsStore);
+                const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+                assert.deepEqual(envType, PythonEnvKind.WindowsStore);
             });
             test(`Path to program files windows store interpreter app sub-directory (${exe})`, async () => {
                 const interpreterPath = path.join(
@@ -116,39 +123,47 @@ suite('Environment Identifier', () => {
                     'PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0',
                     exe,
                 );
-                const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-                assert.deepEqual(envType, EnvironmentType.WindowsStore);
+                const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+                assert.deepEqual(envType, PythonEnvKind.WindowsStore);
             });
             test(`Local app data not set (${exe})`, async () => {
                 getEnvVar.withArgs('LOCALAPPDATA').returns(undefined);
                 const interpreterPath = path.join(fakeLocalAppDataPath, 'Microsoft', 'WindowsApps', exe);
-                const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-                assert.deepEqual(envType, EnvironmentType.WindowsStore);
+                const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+                assert.deepEqual(envType, PythonEnvKind.WindowsStore);
             });
             test(`Program files app data not set (${exe})`, async () => {
-                getEnvVar.withArgs('ProgramFiles').returns(undefined);
                 const interpreterPath = path.join(
                     fakeProgramFilesPath,
                     'WindowsApps',
                     'PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0',
                     exe,
                 );
-                const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-                assert.deepEqual(envType, EnvironmentType.WindowsStore);
+                getEnvVar.withArgs('ProgramFiles').returns(undefined);
+                pathExists.withArgs(path.join(path.dirname(interpreterPath), 'idle.exe')).resolves(true);
+
+                const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+                assert.deepEqual(envType, PythonEnvKind.WindowsStore);
             });
             test(`Path using forward slashes (${exe})`, async () => {
                 const interpreterPath = path
                     .join(fakeLocalAppDataPath, 'Microsoft', 'WindowsApps', exe)
                     .replace('\\', '/');
-                const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-                assert.deepEqual(envType, EnvironmentType.WindowsStore);
+                const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+                assert.deepEqual(envType, PythonEnvKind.WindowsStore);
             });
             test(`Path using long path style slashes (${exe})`, async () => {
                 const interpreterPath = path
                     .join(fakeLocalAppDataPath, 'Microsoft', 'WindowsApps', exe)
                     .replace('\\', '/');
-                const envType: EnvironmentType = await identifyEnvironment(`\\\\?\\${interpreterPath}`);
-                assert.deepEqual(envType, EnvironmentType.WindowsStore);
+                pathExists.callsFake((p: string) => {
+                    if (p.endsWith('idle.exe')) {
+                        return Promise.resolve(true);
+                    }
+                    return Promise.resolve(false);
+                });
+                const envType: PythonEnvKind = await identifyEnvironment(`\\\\?\\${interpreterPath}`);
+                assert.deepEqual(envType, PythonEnvKind.WindowsStore);
             });
         });
     });
@@ -188,8 +203,8 @@ suite('Environment Identifier', () => {
             getUserHomeDirStub.returns(path.join(TEST_LAYOUT_ROOT, 'pyenv1'));
             getEnvVarStub.withArgs('PYENV_ROOT').returns(undefined);
 
-            const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-            assert.deepStrictEqual(envType, EnvironmentType.Pyenv);
+            const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+            assert.deepStrictEqual(envType, PythonEnvKind.Pyenv);
 
             return undefined;
         });
@@ -214,8 +229,8 @@ suite('Environment Identifier', () => {
             getEnvVarStub.withArgs('PYENV').returns(undefined);
             getOsTypeStub.returns(platformApis.OSType.Windows);
 
-            const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-            assert.deepStrictEqual(envType, EnvironmentType.Pyenv);
+            const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+            assert.deepStrictEqual(envType, PythonEnvKind.Pyenv);
 
             return undefined;
         });
@@ -229,8 +244,8 @@ suite('Environment Identifier', () => {
 
             getEnvVarStub.withArgs('PYENV_ROOT').returns(path.join(TEST_LAYOUT_ROOT, 'pyenv3'));
 
-            const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-            assert.deepStrictEqual(envType, EnvironmentType.Pyenv);
+            const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+            assert.deepStrictEqual(envType, PythonEnvKind.Pyenv);
 
             return undefined;
         });
@@ -245,8 +260,8 @@ suite('Environment Identifier', () => {
             getEnvVarStub.withArgs('PYENV').returns(path.join(TEST_LAYOUT_ROOT, 'pyenv3'));
             getOsTypeStub.returns(platformApis.OSType.Windows);
 
-            const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-            assert.deepStrictEqual(envType, EnvironmentType.Pyenv);
+            const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+            assert.deepStrictEqual(envType, PythonEnvKind.Pyenv);
 
             return undefined;
         });
@@ -255,13 +270,13 @@ suite('Environment Identifier', () => {
     suite('Venv', () => {
         test('Pyvenv.cfg is in the same directory as the interpreter', async () => {
             const interpreterPath = path.join(TEST_LAYOUT_ROOT, 'venv1', 'python');
-            const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-            assert.deepEqual(envType, EnvironmentType.Venv);
+            const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+            assert.deepEqual(envType, PythonEnvKind.Venv);
         });
         test('Pyvenv.cfg is in the same directory as the interpreter', async () => {
             const interpreterPath = path.join(TEST_LAYOUT_ROOT, 'venv2', 'bin', 'python');
-            const envType: EnvironmentType = await identifyEnvironment(interpreterPath);
-            assert.deepEqual(envType, EnvironmentType.Venv);
+            const envType: PythonEnvKind = await identifyEnvironment(interpreterPath);
+            assert.deepEqual(envType, PythonEnvKind.Venv);
         });
     });
 
@@ -301,7 +316,7 @@ suite('Environment Identifier', () => {
             getEnvVarStub.withArgs('WORKON_HOME').returns(undefined);
 
             const envType = await identifyEnvironment(interpreterPath);
-            assert.deepStrictEqual(envType, EnvironmentType.VirtualEnvWrapper);
+            assert.deepStrictEqual(envType, PythonEnvKind.VirtualEnvWrapper);
 
             return undefined;
         });
@@ -324,7 +339,7 @@ suite('Environment Identifier', () => {
             getOsTypeStub.returns(platformApis.OSType.Windows);
 
             const envType = await identifyEnvironment(interpreterPath);
-            assert.deepStrictEqual(envType, EnvironmentType.VirtualEnvWrapper);
+            assert.deepStrictEqual(envType, PythonEnvKind.VirtualEnvWrapper);
 
             return undefined;
         });
@@ -336,7 +351,7 @@ suite('Environment Identifier', () => {
             getEnvVarStub.withArgs('WORKON_HOME').returns(workonHomeDir);
 
             const envType = await identifyEnvironment(interpreterPath);
-            assert.deepStrictEqual(envType, EnvironmentType.VirtualEnvWrapper);
+            assert.deepStrictEqual(envType, PythonEnvKind.VirtualEnvWrapper);
         });
     });
 
@@ -352,7 +367,7 @@ suite('Environment Identifier', () => {
                 const interpreterPath = path.join(TEST_LAYOUT_ROOT, folder, 'bin', 'python');
                 const envType = await identifyEnvironment(interpreterPath);
 
-                assert.deepStrictEqual(envType, EnvironmentType.VirtualEnv);
+                assert.deepStrictEqual(envType, PythonEnvKind.VirtualEnv);
             });
         });
     });

@@ -6,7 +6,7 @@ import { inject, injectable } from 'inversify';
 import * as path from 'path';
 import { instance, mock } from 'ts-mockito';
 import * as vscode from 'vscode';
-import { EXTENSION_ROOT_DIR } from '../../../client/common/constants';
+import { CommandSource, EXTENSION_ROOT_DIR } from '../../../client/common/constants';
 import { IFileSystem } from '../../../client/common/platform/types';
 import { createPythonEnv } from '../../../client/common/process/pythonEnvironment';
 import { PythonExecutionFactory } from '../../../client/common/process/pythonExecutionFactory';
@@ -18,14 +18,12 @@ import {
     IPythonExecutionFactory,
     IPythonExecutionService,
 } from '../../../client/common/process/types';
-import { IConfigurationService } from '../../../client/common/types';
+import { IConfigurationService, IExperimentService } from '../../../client/common/types';
 import { IEnvironmentActivationService } from '../../../client/interpreter/activation/types';
-import { ICondaService, IInterpreterService } from '../../../client/interpreter/contracts';
+import { IComponentAdapter, ICondaService, IInterpreterService } from '../../../client/interpreter/contracts';
 import { InterpreterService } from '../../../client/interpreter/interpreterService';
 import { IServiceContainer } from '../../../client/ioc/types';
 import { CondaService } from '../../../client/pythonEnvironments/discovery/locators/services/condaService';
-import { WindowsStoreInterpreter } from '../../../client/pythonEnvironments/discovery/locators/services/windowsStoreInterpreter';
-import { CommandSource } from '../../../client/testing/common/constants';
 import { ITestManagerFactory } from '../../../client/testing/common/types';
 import { rootWorkspaceUri, updateSetting } from '../../common';
 import { initialize, initializeTest, IS_MULTI_ROOT_TEST } from '../../initialize';
@@ -70,8 +68,9 @@ suite('Unit Tests - pytest - discovery with mocked process output', () => {
             @inject(IProcessServiceFactory) processServiceFactory: IProcessServiceFactory,
             @inject(IConfigurationService) private readonly _configService: IConfigurationService,
             @inject(ICondaService) condaService: ICondaService,
-            @inject(WindowsStoreInterpreter) windowsStoreInterpreter: WindowsStoreInterpreter,
             @inject(IBufferDecoder) decoder: IBufferDecoder,
+            @inject(IComponentAdapter) pyenvs: IComponentAdapter,
+            @inject(IExperimentService) experimentService: IExperimentService,
         ) {
             super(
                 _serviceContainer,
@@ -80,9 +79,11 @@ suite('Unit Tests - pytest - discovery with mocked process output', () => {
                 _configService,
                 condaService,
                 decoder,
-                windowsStoreInterpreter,
+                pyenvs,
+                experimentService,
             );
         }
+
         public async createActivatedEnvironment(
             options: ExecutionFactoryCreateWithEnvironmentOptions,
         ): Promise<IPythonExecutionService> {
@@ -95,10 +96,12 @@ suite('Unit Tests - pytest - discovery with mocked process output', () => {
             const fileSystem = this._serviceContainer.get<IFileSystem>(IFileSystem);
             const env = createPythonEnv(pythonPath, procService, fileSystem);
             const procs = createPythonProcessService(procService, env);
+
             return {
                 getInterpreterInformation: () => env.getInterpreterInformation(),
                 getExecutablePath: () => env.getExecutablePath(),
                 isModuleInstalled: (m) => env.isModuleInstalled(m),
+                getModuleVersion: (m) => env.getModuleVersion(m),
                 getExecutionInfo: (a) => env.getExecutionInfo(a),
                 execObservable: (a, o) => procs.execObservable(a, o),
                 execModuleObservable: (m, a, o) => procs.execModuleObservable(m, a, o),
@@ -113,14 +116,14 @@ suite('Unit Tests - pytest - discovery with mocked process output', () => {
     });
     setup(async () => {
         await initializeTest();
-        initializeDI();
+        await initializeDI();
     });
     teardown(async () => {
         await ioc.dispose();
         await updateSetting('testing.pytestArgs', [], rootWorkspaceUri, configTarget);
     });
 
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerUnitTestTypes();
@@ -134,7 +137,7 @@ suite('Unit Tests - pytest - discovery with mocked process output', () => {
             instance(mock(InterpreterService)),
         );
         ioc.serviceManager.rebind<IPythonExecutionFactory>(IPythonExecutionFactory, ExecutionFactory);
-        registerForIOC(ioc.serviceManager, ioc.serviceContainer);
+        await registerForIOC(ioc.serviceManager, ioc.serviceContainer);
         ioc.serviceManager.rebindInstance<ICondaService>(ICondaService, instance(mock(CondaService)));
     }
 

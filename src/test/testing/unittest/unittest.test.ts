@@ -5,13 +5,12 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import { anything, instance, mock, when } from 'ts-mockito';
 import { ConfigurationTarget } from 'vscode';
-import { EXTENSION_ROOT_DIR } from '../../../client/common/constants';
+import { CommandSource, EXTENSION_ROOT_DIR } from '../../../client/common/constants';
 import { EnvironmentActivationService } from '../../../client/interpreter/activation/service';
 import { IEnvironmentActivationService } from '../../../client/interpreter/activation/types';
 import { ICondaService, IInterpreterService } from '../../../client/interpreter/contracts';
 import { InterpreterService } from '../../../client/interpreter/interpreterService';
 import { CondaService } from '../../../client/pythonEnvironments/discovery/locators/services/condaService';
-import { CommandSource } from '../../../client/testing/common/constants';
 import { ITestManagerFactory, TestFile, TestFunction, Tests, TestsToRun } from '../../../client/testing/common/types';
 import { rootWorkspaceUri, updateSetting } from '../../common';
 import { UnitTestIocContainer } from '../serviceRegistry';
@@ -38,29 +37,25 @@ suite('Unit Tests - unittest - discovery against actual python process', () => {
             await fs.remove(cachePath);
         }
         await initializeTest();
-        initializeDI();
+        await initializeDI();
     });
     teardown(async () => {
         await ioc.dispose();
         await updateSetting('testing.unittestArgs', defaultUnitTestArgs, rootWorkspaceUri!, configTarget);
     });
 
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerVariableTypes();
         ioc.registerUnitTestTypes();
         ioc.registerProcessTypes();
         ioc.registerInterpreterStorageTypes();
-        ioc.registerMockInterpreterTypes();
+        await ioc.registerMockInterpreterTypes();
         ioc.serviceManager.rebindInstance<ICondaService>(ICondaService, instance(mock(CondaService)));
         ioc.serviceManager.rebindInstance<IInterpreterService>(IInterpreterService, instance(mock(InterpreterService)));
         const mockEnvironmentActivationService = mock(EnvironmentActivationService);
         when(mockEnvironmentActivationService.getActivatedEnvironmentVariables(anything())).thenResolve();
-        when(mockEnvironmentActivationService.getActivatedEnvironmentVariables(anything(), anything())).thenResolve();
-        when(
-            mockEnvironmentActivationService.getActivatedEnvironmentVariables(anything(), anything(), anything()),
-        ).thenResolve();
         ioc.serviceManager.rebindInstance<IEnvironmentActivationService>(
             IEnvironmentActivationService,
             instance(mockEnvironmentActivationService),

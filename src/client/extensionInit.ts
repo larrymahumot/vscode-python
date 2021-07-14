@@ -4,16 +4,29 @@
 'use strict';
 
 import { Container } from 'inversify';
-import { Disposable, Memento } from 'vscode';
-
+import { Disposable, Memento, OutputChannel, window } from 'vscode';
+import { STANDARD_OUTPUT_CHANNEL } from './common/constants';
+import { registerTypes as platformRegisterTypes } from './common/platform/serviceRegistry';
+import { registerTypes as processRegisterTypes } from './common/process/serviceRegistry';
 import { registerTypes as commonRegisterTypes } from './common/serviceRegistry';
-import { GLOBAL_MEMENTO, IDisposableRegistry, IExtensionContext, IMemento, WORKSPACE_MEMENTO } from './common/types';
+import {
+    GLOBAL_MEMENTO,
+    IDisposableRegistry,
+    IExtensionContext,
+    IMemento,
+    IOutputChannel,
+    WORKSPACE_MEMENTO,
+} from './common/types';
+import { registerTypes as variableRegisterTypes } from './common/variables/serviceRegistry';
+import { OutputChannelNames } from './common/utils/localize';
 import { ExtensionState } from './components';
 import { ServiceContainer } from './ioc/container';
 import { ServiceManager } from './ioc/serviceManager';
 import { IServiceContainer, IServiceManager } from './ioc/types';
+import { addOutputChannelLogging } from './logging';
 import * as pythonEnvironments from './pythonEnvironments';
 import { PythonEnvironments } from './pythonEnvironments/api';
+import { TEST_OUTPUT_CHANNEL } from './testing/constants';
 
 // The code in this module should do nothing more complex than register
 // objects to DI and simple init (e.g. no side effects).  That implies
@@ -37,6 +50,12 @@ export function initializeGlobals(
     serviceManager.addSingletonInstance<Memento>(IMemento, context.workspaceState, WORKSPACE_MEMENTO);
     serviceManager.addSingletonInstance<IExtensionContext>(IExtensionContext, context);
 
+    const standardOutputChannel = window.createOutputChannel(OutputChannelNames.python());
+    addOutputChannelLogging(standardOutputChannel);
+    const unitTestOutChannel = window.createOutputChannel(OutputChannelNames.pythonTest());
+    serviceManager.addSingletonInstance<OutputChannel>(IOutputChannel, standardOutputChannel, STANDARD_OUTPUT_CHANNEL);
+    serviceManager.addSingletonInstance<OutputChannel>(IOutputChannel, unitTestOutChannel, TEST_OUTPUT_CHANNEL);
+
     return {
         context,
         disposables,
@@ -44,9 +63,16 @@ export function initializeGlobals(
     };
 }
 
-export function initializeCommon(ext: ExtensionState): void {
+/**
+ * Registers standard utils like experiment and platform code which are fundamental to the extension.
+ */
+export function initializeStandard(ext: ExtensionState): void {
+    const { serviceManager } = ext.legacyIOC;
     // Core registrations (non-feature specific).
-    commonRegisterTypes(ext.legacyIOC.serviceManager);
+    commonRegisterTypes(serviceManager);
+    variableRegisterTypes(serviceManager);
+    platformRegisterTypes(serviceManager);
+    processRegisterTypes(serviceManager);
 
     // We will be pulling other code over from activateLegacy().
 }
@@ -61,8 +87,8 @@ export type Components = {
 /**
  * Initialize all components in the extension.
  */
-export function initializeComponents(ext: ExtensionState): Components {
-    const pythonEnvs = pythonEnvironments.initialize(ext);
+export async function initializeComponents(ext: ExtensionState): Promise<Components> {
+    const pythonEnvs = await pythonEnvironments.initialize(ext);
 
     // Other component initializers go here.
     // We will be factoring them out of activateLegacy().

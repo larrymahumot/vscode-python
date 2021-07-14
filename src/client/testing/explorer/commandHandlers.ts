@@ -5,15 +5,14 @@
 
 import { inject, injectable } from 'inversify';
 import { ICommandManager } from '../../common/application/types';
-import { Commands } from '../../common/constants';
+import { Commands, CommandSource } from '../../common/constants';
 import { traceDecorators } from '../../common/logger';
 import { IDisposable } from '../../common/types';
 import { swallowExceptions } from '../../common/utils/decorators';
-import { CommandSource } from '../common/constants';
 import { getTestDataItemType } from '../common/testUtils';
 import { TestFile, TestFolder, TestFunction, TestsToRun, TestSuite } from '../common/types';
+import { ITestDataItemResource, TestDataItem, TestDataItemType } from '../common/types';
 import { ITestExplorerCommandHandler } from '../navigation/types';
-import { ITestDataItemResource, TestDataItem, TestDataItemType } from '../types';
 
 type NavigationCommands =
     | typeof Commands.navigateToTestFile

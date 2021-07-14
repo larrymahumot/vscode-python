@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as TypeMoq from 'typemoq';
 import { IFileSystem } from '../../../../client/common/platform/types';
 import { IPersistentStateFactory } from '../../../../client/common/types';
-import { ICondaService, IInterpreterHelper } from '../../../../client/interpreter/contracts';
+import { ICondaLocatorService, IInterpreterHelper } from '../../../../client/interpreter/contracts';
 import { InterpreterHelper } from '../../../../client/interpreter/helpers';
 import { IServiceContainer } from '../../../../client/ioc/types';
 import {
@@ -21,11 +21,11 @@ const environmentsPath = path.join(__dirname, '..', '..', '..', 'src', 'test', '
 suite('Interpreters from Conda Environments', () => {
     let ioc: UnitTestIocContainer;
     let condaProvider: CondaEnvService;
-    let condaService: TypeMoq.IMock<ICondaService>;
+    let condaService: TypeMoq.IMock<ICondaLocatorService>;
     let interpreterHelper: TypeMoq.IMock<InterpreterHelper>;
     let fileSystem: TypeMoq.IMock<IFileSystem>;
-    setup(() => {
-        initializeDI();
+    setup(async () => {
+        await initializeDI();
         const serviceContainer = TypeMoq.Mock.ofType<IServiceContainer>();
         const stateFactory = TypeMoq.Mock.ofType<IPersistentStateFactory>();
         serviceContainer
@@ -36,7 +36,7 @@ suite('Interpreters from Conda Environments', () => {
             .setup((s) => s.createGlobalPersistentState(TypeMoq.It.isAny(), TypeMoq.It.isAny()))
             .returns(() => state);
 
-        condaService = TypeMoq.Mock.ofType<ICondaService>();
+        condaService = TypeMoq.Mock.ofType<ICondaLocatorService>();
         interpreterHelper = TypeMoq.Mock.ofType<InterpreterHelper>();
         fileSystem = TypeMoq.Mock.ofType<IFileSystem>();
         condaProvider = new CondaEnvService(
@@ -47,13 +47,13 @@ suite('Interpreters from Conda Environments', () => {
         );
     });
     teardown(() => ioc.dispose());
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerVariableTypes();
         ioc.registerProcessTypes();
     }
-    function _parseCondaInfo(info: CondaInfo, conda: ICondaService, fs: IFileSystem, h: IInterpreterHelper) {
+    function _parseCondaInfo(info: CondaInfo, conda: ICondaLocatorService, fs: IFileSystem, h: IInterpreterHelper) {
         return parseCondaInfo(info, conda.getInterpreterPath, fs.fileExists, h.getInterpreterInformation);
     }
 
@@ -392,7 +392,7 @@ suite('Interpreters from Conda Environments', () => {
 
     async function includeDefaultPrefixIntoListOfInterpreters(isWindows: boolean) {
         const info = {
-            defaultPrefix: path.join(environmentsPath, 'conda', 'envs', 'numpy'),
+            default_prefix: path.join(environmentsPath, 'conda', 'envs', 'numpy'),
         };
         condaService
             .setup((c) => c.getInterpreterPath(TypeMoq.It.isAny()))
@@ -400,8 +400,8 @@ suite('Interpreters from Conda Environments', () => {
                 isWindows ? path.join(environmentPath, 'python.exe') : path.join(environmentPath, 'bin', 'python'),
             );
         const pythonPath = isWindows
-            ? path.join(info.defaultPrefix, 'python.exe')
-            : path.join(info.defaultPrefix, 'bin', 'python');
+            ? path.join(info.default_prefix, 'python.exe')
+            : path.join(info.default_prefix, 'bin', 'python');
         fileSystem.setup((fs) => fs.fileExists(TypeMoq.It.isValue(pythonPath))).returns(() => Promise.resolve(true));
         interpreterHelper
             .setup((i) => i.getInterpreterInformation(TypeMoq.It.isAny()))
@@ -415,7 +415,7 @@ suite('Interpreters from Conda Environments', () => {
         );
         assert.equal(interpreters.length, 1, 'Incorrect number of entries');
 
-        const path1 = path.join(info.defaultPrefix, isWindows ? 'python.exe' : path.join('bin', 'python'));
+        const path1 = path.join(info.default_prefix, isWindows ? 'python.exe' : path.join('bin', 'python'));
         assert.equal(interpreters[0].path, path1, 'Incorrect path for first env');
         assert.equal(
             interpreters[0].companyDisplayName,

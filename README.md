@@ -1,11 +1,17 @@
 # Python extension for Visual Studio Code
 
-A [Visual Studio Code](https://code.visualstudio.com/) [extension](https://marketplace.visualstudio.com/VSCode) with rich support for the [Python language](https://www.python.org/) (for all [actively supported versions](https://devguide.python.org/#status-of-python-branches) of the language: >=3.6), including features such as IntelliSense, linting, debugging, code navigation, code formatting, Jupyter notebook support, refactoring, variable explorer, test explorer, and more!
+A [Visual Studio Code](https://code.visualstudio.com/) [extension](https://marketplace.visualstudio.com/VSCode) with rich support for the [Python language](https://www.python.org/) (for all [actively supported versions](https://devguide.python.org/#status-of-python-branches) of the language: >=3.6), including features such as IntelliSense (Pylance), linting, debugging, code navigation, code formatting, refactoring, variable explorer, test explorer, and more!
+
+## Installed extensions
+
+The Python extension will automatically install the [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance) and [Jupyter](https://marketplace.visualstudio.com/items?itemName=ms-toolsai.jupyter) extensions to give you the best experience when working with Python files and Jupyter notebooks. However, Pylance is an optional dependency, meaning the Python extension will remain fully functional if it fails to be installed. You can also [uninstall](https://code.visualstudio.com/docs/editor/extension-marketplace#_uninstall-an-extension) it at the expense of some features if you’re using a different language server.
+
+Extensions installed through the marketplace are subject to the [Marketplace Terms of Use](https://cdn.vsassets.io/v/M146_20190123.39/_content/Microsoft-Visual-Studio-Marketplace-Terms-of-Use.pdf).
 
 ## Quick start
 
 -   **Step 1.** [Install a supported version of Python on your system](https://code.visualstudio.com/docs/python/python-tutorial#_prerequisites) (note: that the system install of Python on macOS is not supported).
--   **Step 2.** Install the Python extension for Visual Studio Code.
+-   **Step 2.** [Install the Python extension for Visual Studio Code](https://code.visualstudio.com/docs/editor/extension-gallery).
 -   **Step 3.** Open or create a Python file and start coding!
 
 ## Set up your environment
@@ -18,11 +24,11 @@ A [Visual Studio Code](https://code.visualstudio.com/) [extension](https://marke
 
 -   Configure the debugger through the Debug Activity Bar
 
-      <img src=https://raw.githubusercontent.com/microsoft/vscode-python/main/images/ConfigureDebugger.gif width=734 height=413>
+     <img src=https://raw.githubusercontent.com/microsoft/vscode-python/main/images/ConfigureDebugger.gif width=734 height=413>
 
 -   Configure tests by running the `Configure Tests` command
 
-      <img src=https://raw.githubusercontent.com/microsoft/vscode-python/main/images/ConfigureTests.gif width=734 height=413>
+     <img src=https://raw.githubusercontent.com/microsoft/vscode-python/main/images/ConfigureTests.gif width=734 height=413>
 
 ## Jupyter Notebook quick start
 
@@ -30,7 +36,7 @@ The Python extension and the [Jupyter extension](https://marketplace.visualstudi
 
 -   Open or create a Jupyter Notebook file (.ipynb) and start coding in our Notebook Editor!
 
-      <img src=https://raw.githubusercontent.com/microsoft/vscode-python/main/images/OpenOrCreateNotebook.gif width=1029 height=602>
+     <img src=https://raw.githubusercontent.com/microsoft/vscode-python/main/images/OpenOrCreateNotebook.gif width=1029 height=602>
 
 For more information you can:
 
@@ -82,7 +88,7 @@ The extension is available in multiple languages: `de`, `en`, `es`, `fa`, `fr`, 
 -   Contributions are always welcome! Please see our [contributing guide](https://github.com/Microsoft/vscode-python/blob/main/CONTRIBUTING.md) for more details
 -   Any and all feedback is appreciated and welcome!
     -   If someone has already [filed an issue](https://github.com/Microsoft/vscode-python) that encompasses your feedback, please leave a 👍/👎 reaction on the issue
-    -   Otherwise please file a new issue
+    -   Otherwise please start a [new discussion](https://github.com/microsoft/vscode-python/discussions/categories/ideas)
 -   If you're interested in the development of the extension, you can read about our [development process](https://github.com/Microsoft/vscode-python/blob/main/CONTRIBUTING.md#development-process)
 
 ## Data and telemetry

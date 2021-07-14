@@ -1,7 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 import { IExtensionSingleActivationService } from '../activation/types';
-import { IExperimentService, IFileDownloader, IHttpClient, IInterpreterPathService } from '../common/types';
+import {
+    IAsyncDisposableRegistry,
+    IBrowserService,
+    IConfigurationService,
+    ICryptoUtils,
+    ICurrentProcess,
+    IEditorUtils,
+    IExperimentService,
+    IExtensions,
+    IFileDownloader,
+    IHttpClient,
+    IInstaller,
+    IInterpreterPathService,
+    IPathUtils,
+    IPersistentStateFactory,
+    IRandom,
+    IToolExecutionPath,
+    IsWindows,
+    ToolExecutionPath,
+} from './types';
 import { IServiceManager } from '../ioc/types';
 import { JupyterExtensionDependencyManager } from '../jupyter/jupyterExtensionDependencyManager';
 import { ImportTracker } from '../telemetry/importTracker';
@@ -12,7 +31,7 @@ import { ApplicationShell } from './application/applicationShell';
 import { ClipboardService } from './application/clipboard';
 import { CommandManager } from './application/commandManager';
 import { ReloadVSCodeCommandHandler } from './application/commands/reloadCommand';
-import { CustomEditorService } from './application/customEditorService';
+import { ReportIssueCommandHandler } from './application/commands/reportIssueCommand';
 import { DebugService } from './application/debugService';
 import { DebugSessionTelemetry } from './application/debugSessionTelemetry';
 import { DocumentManager } from './application/documentManager';
@@ -26,7 +45,6 @@ import {
     IApplicationShell,
     IClipboard,
     ICommandManager,
-    ICustomEditorService,
     IDebugService,
     IDocumentManager,
     IJupyterExtensionDependencyManager,
@@ -38,12 +56,10 @@ import {
 import { WorkspaceService } from './application/workspace';
 import { AsyncDisposableRegistry } from './asyncDisposableRegistry';
 import { ConfigurationService } from './configuration/service';
+import { PipEnvExecutionPath } from './configuration/executionSettings/pipEnvExecution';
 import { CryptoUtils } from './crypto';
 import { EditorUtils } from './editor';
-import { DebuggerDataViewerExperimentEnabler } from './experiments/debuggerDataViewerExperimentEnabler';
-import { ExperimentsManager } from './experiments/manager';
 import { ExperimentService } from './experiments/service';
-import { FeatureDeprecationManager } from './featureDeprecationManager';
 import {
     ExtensionInsidersDailyChannelRule,
     ExtensionInsidersOffChannelRule,
@@ -97,26 +113,13 @@ import {
     ITerminalServiceFactory,
     TerminalActivationProviders,
 } from './terminal/types';
-import {
-    IAsyncDisposableRegistry,
-    IBrowserService,
-    IConfigurationService,
-    ICryptoUtils,
-    ICurrentProcess,
-    IEditorUtils,
-    IExperimentsManager,
-    IExtensions,
-    IFeatureDeprecationManager,
-    IInstaller,
-    IPathUtils,
-    IPersistentStateFactory,
-    IRandom,
-    IsWindows,
-} from './types';
+
 import { IMultiStepInputFactory, MultiStepInputFactory } from './utils/multiStepInput';
 import { Random } from './utils/random';
+import { JupyterNotInstalledNotificationHelper } from '../jupyter/jupyterNotInstalledNotificationHelper';
+import { IJupyterNotInstalledNotificationHelper } from '../jupyter/types';
 
-export function registerTypes(serviceManager: IServiceManager) {
+export function registerTypes(serviceManager: IServiceManager): void {
     serviceManager.addSingletonInstance<boolean>(IsWindows, IS_WINDOWS);
 
     serviceManager.addSingleton<IActiveResourceService>(IActiveResourceService, ActiveResourceService);
@@ -124,6 +127,7 @@ export function registerTypes(serviceManager: IServiceManager) {
     serviceManager.addSingleton<IExtensions>(IExtensions, Extensions);
     serviceManager.addSingleton<IRandom>(IRandom, Random);
     serviceManager.addSingleton<IPersistentStateFactory>(IPersistentStateFactory, PersistentStateFactory);
+    serviceManager.addBinding(IPersistentStateFactory, IExtensionSingleActivationService);
     serviceManager.addSingleton<ITerminalServiceFactory>(ITerminalServiceFactory, TerminalServiceFactory);
     serviceManager.addSingleton<IPathUtils>(IPathUtils, PathUtils);
     serviceManager.addSingleton<IApplicationShell>(IApplicationShell, ApplicationShell);
@@ -134,6 +138,10 @@ export function registerTypes(serviceManager: IServiceManager) {
     serviceManager.addSingleton<IJupyterExtensionDependencyManager>(
         IJupyterExtensionDependencyManager,
         JupyterExtensionDependencyManager,
+    );
+    serviceManager.addSingleton<IJupyterNotInstalledNotificationHelper>(
+        IJupyterNotInstalledNotificationHelper,
+        JupyterNotInstalledNotificationHelper,
     );
     serviceManager.addSingleton<ICommandManager>(ICommandManager, CommandManager);
     serviceManager.addSingleton<IConfigurationService>(IConfigurationService, ConfigurationService);
@@ -155,7 +163,6 @@ export function registerTypes(serviceManager: IServiceManager) {
         PowershellTerminalActivationFailedHandler,
     );
     serviceManager.addSingleton<ICryptoUtils>(ICryptoUtils, CryptoUtils);
-    serviceManager.addSingleton<IExperimentsManager>(IExperimentsManager, ExperimentsManager);
     serviceManager.addSingleton<IExperimentService>(IExperimentService, ExperimentService);
 
     serviceManager.addSingleton<ITerminalHelper>(ITerminalHelper, TerminalHelper);
@@ -184,7 +191,7 @@ export function registerTypes(serviceManager: IServiceManager) {
         PipEnvActivationCommandProvider,
         TerminalActivationProviders.pipenv,
     );
-    serviceManager.addSingleton<IFeatureDeprecationManager>(IFeatureDeprecationManager, FeatureDeprecationManager);
+    serviceManager.addSingleton<IToolExecutionPath>(IToolExecutionPath, PipEnvExecutionPath, ToolExecutionPath.pipenv);
 
     serviceManager.addSingleton<IAsyncDisposableRegistry>(IAsyncDisposableRegistry, AsyncDisposableRegistry);
     serviceManager.addSingleton<IMultiStepInputFactory>(IMultiStepInputFactory, MultiStepInputFactory);
@@ -205,7 +212,7 @@ export function registerTypes(serviceManager: IServiceManager) {
     );
     serviceManager.addSingleton<IExtensionSingleActivationService>(
         IExtensionSingleActivationService,
-        DebuggerDataViewerExperimentEnabler,
+        ReportIssueCommandHandler,
     );
     serviceManager.addSingleton<IExtensionChannelService>(IExtensionChannelService, ExtensionChannelService);
     serviceManager.addSingleton<IExtensionChannelRule>(
@@ -227,7 +234,6 @@ export function registerTypes(serviceManager: IServiceManager) {
         IExtensionSingleActivationService,
         DebugSessionTelemetry,
     );
-    serviceManager.addSingleton<ICustomEditorService>(ICustomEditorService, CustomEditorService);
     serviceManager.addSingleton<IStartPage>(IStartPage, StartPage, undefined, [IExtensionSingleActivationService]);
     serviceManager.addSingleton<ICodeCssGenerator>(ICodeCssGenerator, CodeCssGenerator);
     serviceManager.addSingleton<IThemeFinder>(IThemeFinder, ThemeFinder);

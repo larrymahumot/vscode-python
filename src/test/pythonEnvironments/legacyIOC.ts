@@ -6,20 +6,17 @@ import { IServiceContainer, IServiceManager } from '../../client/ioc/types';
 import { PythonEnvironments } from '../../client/pythonEnvironments/api';
 import { initializeExternalDependencies } from '../../client/pythonEnvironments/common/externalDependencies';
 import { registerLegacyDiscoveryForIOC, registerNewDiscoveryForIOC } from '../../client/pythonEnvironments/legacyIOC';
-import { EnvironmentsSecurity } from '../../client/pythonEnvironments/security';
 
 /**
  * This is here to support old tests.
  * @deprecated
  */
-export function registerForIOC(serviceManager: IServiceManager, serviceContainer: IServiceContainer): void {
-    registerLegacyDiscoveryForIOC(serviceManager);
+export async function registerForIOC(
+    serviceManager: IServiceManager,
+    serviceContainer: IServiceContainer,
+): Promise<void> {
     initializeExternalDependencies(serviceContainer);
     // The old tests do not need real instances, directly pass in mocks.
-    registerNewDiscoveryForIOC(
-        serviceManager,
-        instance(mock(PythonEnvironments)),
-        instance(mock(EnvironmentsSecurity)),
-        [],
-    );
+    registerNewDiscoveryForIOC(serviceManager, instance(mock(PythonEnvironments)));
+    await registerLegacyDiscoveryForIOC(serviceManager);
 }

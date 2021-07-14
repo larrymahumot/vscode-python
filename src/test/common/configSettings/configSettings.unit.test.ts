@@ -21,11 +21,11 @@ import {
     ILoggingSettings,
     ISortImportSettings,
     ITerminalSettings,
-    ITestingSettings,
     IWorkspaceSymbolSettings,
 } from '../../../client/common/types';
 import { noop } from '../../../client/common/utils/misc';
 import * as EnvFileTelemetry from '../../../client/telemetry/envFileTelemetry';
+import { ITestingSettings } from '../../../client/testing/configuration/types';
 import { MockAutoSelectionService } from '../../mocks/autoSelector';
 
 suite('Python Settings', async () => {
@@ -33,7 +33,7 @@ suite('Python Settings', async () => {
         public update(pythonSettings: WorkspaceConfiguration) {
             return super.update(pythonSettings);
         }
-        protected initialize() {
+        public initialize() {
             noop();
         }
     }
@@ -78,7 +78,7 @@ suite('Python Settings', async () => {
         }
 
         // boolean settings
-        for (const name of ['downloadLanguageServer', 'autoUpdateLanguageServer', 'useIsolation']) {
+        for (const name of ['downloadLanguageServer', 'autoUpdateLanguageServer']) {
             config
                 .setup((c) => c.get<boolean>(name, true))
 
@@ -144,7 +144,7 @@ suite('Python Settings', async () => {
     });
 
     suite('Boolean settings', async () => {
-        ['downloadLanguageServer', 'autoUpdateLanguageServer', 'globalModuleInstallation', 'useIsolation'].forEach(
+        ['downloadLanguageServer', 'autoUpdateLanguageServer', 'globalModuleInstallation'].forEach(
             async (settingName) => {
                 testIfValueIsUpdated(settingName, true);
             },
@@ -187,7 +187,11 @@ suite('Python Settings', async () => {
         config.verifyAll();
     });
 
-    function testLanguageServer(languageServer: LanguageServerType, expectedValue: LanguageServerType) {
+    function testLanguageServer(
+        languageServer: LanguageServerType,
+        expectedValue: LanguageServerType,
+        isDefault: boolean,
+    ) {
         test(languageServer, () => {
             expected.pythonPath = 'python3';
             expected.languageServer = languageServer;
@@ -200,16 +204,17 @@ suite('Python Settings', async () => {
             settings.update(config.object);
 
             expect(settings.languageServer).to.be.equal(expectedValue);
+            expect(settings.languageServerIsDefault).to.be.equal(isDefault);
             config.verifyAll();
         });
     }
 
     suite('languageServer settings', async () => {
         Object.values(LanguageServerType).forEach(async (languageServer) => {
-            testLanguageServer(languageServer, languageServer);
+            testLanguageServer(languageServer, languageServer, false);
         });
 
-        testLanguageServer('invalid' as LanguageServerType, LanguageServerType.Jedi);
+        testLanguageServer('invalid' as LanguageServerType, LanguageServerType.Jedi, true);
     });
 
     function testExperiments(enabled: boolean) {

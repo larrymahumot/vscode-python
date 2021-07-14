@@ -8,11 +8,11 @@ import { expect } from 'chai';
 import * as sinon from 'sinon';
 import { anything, instance, mock, verify, when } from 'ts-mockito';
 import * as TypeMoq from 'typemoq';
-import { EventEmitter } from 'vscode';
+import { EventEmitter, UIKind } from 'vscode';
 import { ApplicationEnvironment } from '../../../client/common/application/applicationEnvironment';
 import { CommandManager } from '../../../client/common/application/commandManager';
-import { Channel, IApplicationEnvironment, ICommandManager } from '../../../client/common/application/types';
-import { Commands } from '../../../client/common/constants';
+import { IApplicationEnvironment, ICommandManager } from '../../../client/common/application/types';
+import { Channel, Commands } from '../../../client/common/constants';
 import { ExtensionChannelService } from '../../../client/common/insidersBuild/downloadChannelService';
 import { InsidersExtensionPrompt } from '../../../client/common/insidersBuild/insidersExtensionPrompt';
 import { InsidersExtensionService } from '../../../client/common/insidersBuild/insidersExtensionService';
@@ -229,7 +229,7 @@ suite('Insiders Extension Service - Function handleEdgeCases()', () => {
         cmdManager = TypeMoq.Mock.ofType<ICommandManager>(undefined, TypeMoq.MockBehavior.Strict);
         serviceContainer = TypeMoq.Mock.ofType<IServiceContainer>(undefined, TypeMoq.MockBehavior.Strict);
         insidersPrompt = TypeMoq.Mock.ofType<IInsiderExtensionPrompt>(undefined, TypeMoq.MockBehavior.Strict);
-        hasUserBeenNotifiedState = mock(PersistentState);
+        hasUserBeenNotifiedState = mock(PersistentState) as IPersistentState<boolean>;
 
         insidersExtensionService = new InsidersExtensionService(
             extensionChannelService.object,
@@ -246,6 +246,7 @@ suite('Insiders Extension Service - Function handleEdgeCases()', () => {
             .returns(() => instance(hasUserBeenNotifiedState))
             // Basically means "we don't care" (necessary for strict mocks).
             .verifiable(TypeMoq.Times.atLeast(0));
+        hasUserBeenNotifiedState = mock(PersistentState) as PersistentState<boolean>;
     }
 
     setup(() => {
@@ -268,12 +269,19 @@ suite('Insiders Extension Service - Function handleEdgeCases()', () => {
         installChannel?: ExtensionChannels;
         isChannelUsingDefaultConfiguration?: boolean;
         hasUserBeenNotified?: boolean;
+        uiKind?: UIKind;
     };
 
     function setState(info: TestInfo, checkPromptEnroll: boolean) {
         if (info.vscodeChannel) {
             appEnvironment.setup((e) => e.channel).returns(() => info.vscodeChannel!);
         }
+
+        appEnvironment
+            .setup((e) => e.uiKind)
+            .returns(() => info.uiKind ?? UIKind.Desktop)
+            // Basically means "we don't care" (necessary for strict mocks).
+            .verifiable(TypeMoq.Times.atLeast(0));
 
         if (info.hasUserBeenNotified !== undefined) {
             when(hasUserBeenNotifiedState.value).thenReturn(info.hasUserBeenNotified!);
@@ -298,6 +306,23 @@ suite('Insiders Extension Service - Function handleEdgeCases()', () => {
 
         verifyAll();
         verify(hasUserBeenNotifiedState.value).once();
+    });
+
+    test(`Insiders Install Prompt is not displayed when uiKind = 'UIKind.Web'`, async () => {
+        setState(
+            {
+                // prompt to enroll
+                vscodeChannel: 'insiders',
+                hasUserBeenNotified: false,
+                isChannelUsingDefaultConfiguration: true,
+                uiKind: UIKind.Web,
+            },
+            false,
+        );
+
+        await insidersExtensionService.handleEdgeCases(true);
+
+        verifyAll();
     });
 
     suite('Verify no operation is performed if none of the case conditions are met', async () => {

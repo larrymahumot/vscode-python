@@ -7,26 +7,24 @@ import { EOL } from 'os';
 import * as path from 'path';
 import { instance, mock } from 'ts-mockito';
 import { ConfigurationTarget } from 'vscode';
-import { EXTENSION_ROOT_DIR } from '../../../client/common/constants';
+import { CommandSource, EXTENSION_ROOT_DIR } from '../../../client/common/constants';
 import { IProcessServiceFactory } from '../../../client/common/process/types';
 import { ICondaService, IInterpreterService } from '../../../client/interpreter/contracts';
 import { InterpreterService } from '../../../client/interpreter/interpreterService';
 import { CondaService } from '../../../client/pythonEnvironments/discovery/locators/services/condaService';
 import { ArgumentsHelper } from '../../../client/testing/common/argumentsHelper';
-import { CommandSource, UNITTEST_PROVIDER } from '../../../client/testing/common/constants';
+import { UNITTEST_PROVIDER } from '../../../client/testing/common/constants';
 import { TestRunner } from '../../../client/testing/common/runner';
-import {
-    ITestManagerFactory,
-    ITestRunner,
-    IUnitTestSocketServer,
-    TestsToRun,
-} from '../../../client/testing/common/types';
 import {
     IArgumentsHelper,
     IArgumentsService,
+    ITestManagerFactory,
     ITestManagerRunner,
+    ITestRunner,
     IUnitTestHelper,
-} from '../../../client/testing/types';
+    IUnitTestSocketServer,
+    TestsToRun,
+} from '../../../client/testing/common/types';
 import { UnitTestHelper } from '../../../client/testing/unittest/helper';
 import { TestManagerRunner } from '../../../client/testing/unittest/runner';
 import { ArgumentsService } from '../../../client/testing/unittest/services/argsService';
@@ -57,7 +55,7 @@ suite('Unit Tests - unittest - run with mocked process output', () => {
             await fs.remove(cachePath);
         }
         await initializeTest();
-        initializeDI();
+        await initializeDI();
         await ignoreTestLauncher();
     });
     teardown(async () => {
@@ -84,7 +82,7 @@ suite('Unit Tests - unittest - run with mocked process output', () => {
     }
     const cliSwitches = buildTestCliSwitches();
 
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerVariableTypes();
@@ -113,7 +111,7 @@ suite('Unit Tests - unittest - run with mocked process output', () => {
             IInterpreterService,
             instance(mock(InterpreterService)),
         );
-        registerForIOC(ioc.serviceManager, ioc.serviceContainer);
+        await registerForIOC(ioc.serviceManager, ioc.serviceContainer);
         ioc.serviceManager.rebindInstance<ICondaService>(ICondaService, instance(mock(CondaService)));
     }
 

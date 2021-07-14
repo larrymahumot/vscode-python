@@ -29,10 +29,9 @@ import {
 import { WorkspaceService } from '../../client/common/application/workspace';
 import { AsyncDisposableRegistry } from '../../client/common/asyncDisposableRegistry';
 import { ConfigurationService } from '../../client/common/configuration/service';
+import { PipEnvExecutionPath } from '../../client/common/configuration/executionSettings/pipEnvExecution';
 import { CryptoUtils } from '../../client/common/crypto';
 import { EditorUtils } from '../../client/common/editor';
-import { ExperimentsManager } from '../../client/common/experiments/manager';
-import { FeatureDeprecationManager } from '../../client/common/featureDeprecationManager';
 import {
     ExtensionInsidersDailyChannelRule,
     ExtensionInsidersOffChannelRule,
@@ -86,15 +85,15 @@ import {
     ICryptoUtils,
     ICurrentProcess,
     IEditorUtils,
-    IExperimentsManager,
     IExtensions,
-    IFeatureDeprecationManager,
     IHttpClient,
     IInstaller,
     IInterpreterPathService,
     IPathUtils,
     IPersistentStateFactory,
     IRandom,
+    IToolExecutionPath,
+    ToolExecutionPath,
 } from '../../client/common/types';
 import { IMultiStepInputFactory, MultiStepInputFactory } from '../../client/common/utils/multiStepInput';
 import { Random } from '../../client/common/utils/random';
@@ -132,7 +131,6 @@ suite('Common - Service Registry', () => {
             [ITerminalActivator, TerminalActivator],
             [ITerminalActivationHandler, PowershellTerminalActivationFailedHandler],
             [ICryptoUtils, CryptoUtils],
-            [IExperimentsManager, ExperimentsManager],
             [ITerminalHelper, TerminalHelper],
             [ITerminalActivationCommandProvider, PyEnvActivationCommandProvider, TerminalActivationProviders.pyenv],
             [ITerminalActivationCommandProvider, Bash, TerminalActivationProviders.bashCShellFish],
@@ -141,9 +139,9 @@ suite('Common - Service Registry', () => {
                 CommandPromptAndPowerShell,
                 TerminalActivationProviders.commandPromptAndPowerShell,
             ],
+            [IToolExecutionPath, PipEnvExecutionPath, ToolExecutionPath.pipenv],
             [ITerminalActivationCommandProvider, CondaActivationCommandProvider, TerminalActivationProviders.conda],
             [ITerminalActivationCommandProvider, PipEnvActivationCommandProvider, TerminalActivationProviders.pipenv],
-            [IFeatureDeprecationManager, FeatureDeprecationManager],
             [IAsyncDisposableRegistry, AsyncDisposableRegistry],
             [IMultiStepInputFactory, MultiStepInputFactory],
             [IImportTracker, ImportTracker],

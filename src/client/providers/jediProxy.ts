@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/* eslint-disable max-classes-per-file, @typescript-eslint/no-explicit-any */
+
 import { ChildProcess } from 'child_process';
 import * as path from 'path';
-// @ts-ignore
-import * as pidusage from 'pidusage';
 import { CancellationToken, CancellationTokenSource, CompletionItemKind, Disposable, SymbolKind, Uri } from 'vscode';
 import '../common/extensions';
 import { IS_WINDOWS } from '../common/platform/constants';
@@ -15,13 +15,10 @@ import { IPythonExecutionFactory } from '../common/process/types';
 import { IConfigurationService, IPythonSettings } from '../common/types';
 import { createDeferred, Deferred } from '../common/utils/async';
 import { swallowExceptions } from '../common/utils/decorators';
-import { StopWatch } from '../common/utils/stopWatch';
 import { IEnvironmentVariablesProvider } from '../common/variables/types';
 import { IServiceContainer } from '../ioc/types';
 import { PythonEnvironment } from '../pythonEnvironments/info';
-import { sendTelemetryEvent } from '../telemetry';
-import { EventName } from '../telemetry/constants';
-import { traceError, traceWarning } from './../common/logger';
+import { traceError } from '../common/logger';
 
 const pythonVSCodeTypeMappings = new Map<string, CompletionItemKind>();
 pythonVSCodeTypeMappings.set('none', CompletionItemKind.Value);
@@ -153,24 +150,32 @@ type JediProxyPayload = {
 
 export class JediProxy implements Disposable {
     private proc?: ChildProcess;
+
     private pythonSettings: IPythonSettings;
-    private cmdId: number = 0;
+
+    private cmdId = 0;
+
     private lastKnownPythonInterpreter: string;
+
     private previousData = '';
+
     private commands = new Map<number, IExecutionCommand<ICommandResult>>();
+
     private commandQueue: number[] = [];
+
     private spawnRetryAttempts = 0;
+
     private additionalAutoCompletePaths: string[] = [];
+
     private workspacePath: string;
+
     private languageServerStarted!: Deferred<void>;
+
     private initialized: Deferred<void>;
+
     private environmentVariablesProvider!: IEnvironmentVariablesProvider;
-    private ignoreJediMemoryFootprint: boolean = false;
-    private pidUsageFailures = { timer: new StopWatch(), counter: 0 };
-    private lastCmdIdProcessed?: number;
-    private lastCmdIdProcessedForPidUsage?: number;
+
     private readonly disposables: Disposable[] = [];
-    private timer?: NodeJS.Timer | number;
 
     public constructor(
         workspacePath: string,
@@ -185,23 +190,20 @@ export class JediProxy implements Disposable {
         this.startLanguageServer()
             .then(() => this.initialized.resolve())
             .ignoreErrors();
-        this.checkJediMemoryFootprint().ignoreErrors();
     }
 
-    private static getProperty<T>(o: object, name: string): T {
-        return <T>(o as any)[name];
+    private static getProperty<T>(o: Record<string, unknown>, name: string): T {
+        return <T>o[name];
     }
 
-    public dispose() {
+    public dispose(): void {
         while (this.disposables.length > 0) {
             const disposable = this.disposables.pop();
             if (disposable) {
                 disposable.dispose();
             }
         }
-        if (this.timer) {
-            clearTimeout(this.timer as any);
-        }
+
         this.killProcess();
     }
 
@@ -222,12 +224,12 @@ export class JediProxy implements Disposable {
         const payload = this.createPayload(executionCmd);
         executionCmd.deferred = createDeferred<T>();
         try {
-            this.proc.stdin.write(`${JSON.stringify(payload)}\n`);
+            this.proc.stdin?.write(`${JSON.stringify(payload)}\n`);
             this.commands.set(executionCmd.id, executionCmd);
             this.commandQueue.push(executionCmd.id);
         } catch (ex) {
             traceError(ex);
-            //If 'This socket is closed.' that means process didn't start at all (at least not properly).
+            // If 'This socket is closed.' that means process didn't start at all (at least not properly).
             if (ex.message === 'This socket is closed.') {
                 this.killProcess();
             } else {
@@ -247,98 +249,24 @@ export class JediProxy implements Disposable {
             this.handleError('spawnProcess', ex);
         });
     }
-    private shouldCheckJediMemoryFootprint() {
-        if (this.ignoreJediMemoryFootprint || this.pythonSettings.jediMemoryLimit === -1) {
-            return false;
-        }
-        if (
-            this.lastCmdIdProcessedForPidUsage &&
-            this.lastCmdIdProcessed &&
-            this.lastCmdIdProcessedForPidUsage === this.lastCmdIdProcessed
-        ) {
-            // If no more commands were processed since the last time,
-            //  then there's no need to check again.
-            return false;
-        }
-        return true;
-    }
-    private async checkJediMemoryFootprint() {
-        // Check memory footprint periodically. Do not check on every request due to
-        // the performance impact. See https://github.com/soyuka/pidusage - on Windows
-        // it is using wmic which means spawning cmd.exe process on every request.
-        if (this.pythonSettings.jediMemoryLimit === -1) {
-            return;
-        }
-
-        await this.checkJediMemoryFootprintImpl();
-        if (this.timer) {
-            clearTimeout(this.timer as any);
-        }
-        this.timer = setTimeout(() => this.checkJediMemoryFootprint(), 15 * 1000);
-    }
-    private async checkJediMemoryFootprintImpl(): Promise<void> {
-        if (!this.proc || this.proc.killed) {
-            return;
-        }
-        if (!this.shouldCheckJediMemoryFootprint()) {
-            return;
-        }
-        this.lastCmdIdProcessedForPidUsage = this.lastCmdIdProcessed;
-
-        // Do not run pidusage over and over, wait for it to finish.
-        const deferred = createDeferred<void>();
-        (pidusage as any).stat(this.proc.pid, async (err: any, result: any) => {
-            if (err) {
-                this.pidUsageFailures.counter += 1;
-                // If this function fails 2 times in the last 60 seconds, lets not try ever again.
-                if (this.pidUsageFailures.timer.elapsedTime > 60 * 1000) {
-                    this.ignoreJediMemoryFootprint = this.pidUsageFailures.counter > 2;
-                    this.pidUsageFailures.counter = 0;
-                    this.pidUsageFailures.timer.reset();
-                }
-                traceError('Python Extension: (pidusage)', err);
-            } else {
-                const limit = Math.min(Math.max(this.pythonSettings.jediMemoryLimit, 1024), 8192);
-                let restartJedi = false;
-                if (result && result.memory) {
-                    restartJedi = result.memory > limit * 1024 * 1024;
-                    const props = {
-                        memUse: result.memory,
-                        limit: limit * 1024 * 1024,
-                        isUserDefinedLimit: limit !== 1024,
-                        restart: restartJedi,
-                    };
-                    sendTelemetryEvent(EventName.JEDI_MEMORY, undefined, props);
-                }
-                if (restartJedi) {
-                    traceWarning(
-                        `IntelliSense process memory consumption exceeded limit of ${limit} MB and process will be restarted.\nThe limit is controlled by the 'python.jediMemoryLimit' setting.`,
-                    );
-                    await this.restartLanguageServer();
-                }
-            }
-
-            deferred.resolve();
-        });
-
-        return deferred.promise;
-    }
 
     // @debounce(1500)
     @swallowExceptions('JediProxy')
     private async environmentVariablesChangeHandler() {
-        const newAutoComletePaths = await this.buildAutoCompletePaths();
-        if (this.additionalAutoCompletePaths.join(',') !== newAutoComletePaths.join(',')) {
-            this.additionalAutoCompletePaths = newAutoComletePaths;
+        const newAutoCompletePaths = await this.buildAutoCompletePaths();
+        if (this.additionalAutoCompletePaths.join(',') !== newAutoCompletePaths.join(',')) {
+            this.additionalAutoCompletePaths = newAutoCompletePaths;
             this.restartLanguageServer().ignoreErrors();
         }
     }
+
     @swallowExceptions('JediProxy')
     private async startLanguageServer(): Promise<void> {
         const newAutoComletePaths = await this.buildAutoCompletePaths();
         this.additionalAutoCompletePaths = newAutoComletePaths;
         return this.restartLanguageServer();
     }
+
     private restartLanguageServer(): Promise<void> {
         this.killProcess();
         this.clearPendingRequests();
@@ -360,11 +288,14 @@ export class JediProxy implements Disposable {
             if (this.proc) {
                 this.proc.kill();
             }
-        } catch (ex) {}
+        } catch (ex) {
+            // intentionally left blank
+        }
         this.proc = undefined;
     }
 
-    private handleError(source: string, errorMessage: string) {
+    // eslint-disable-next-line class-methods-use-this
+    private handleError(source: string, errorMessage: string): void {
         traceError(`${source} jediProxy`, `Error (${source}) ${errorMessage}`);
     }
 
@@ -412,7 +343,8 @@ export class JediProxy implements Disposable {
                     const data = output.out;
                     // Possible there was an exception in parsing the data returned,
                     // so append the data and then parse it.
-                    const dataStr = (this.previousData = `${this.previousData}${data}`);
+                    this.previousData = `${this.previousData}${data}`;
+                    const dataStr = this.previousData;
 
                     let responses: any[];
                     try {
@@ -443,8 +375,8 @@ export class JediProxy implements Disposable {
                         if (!cmd) {
                             return;
                         }
-                        this.lastCmdIdProcessed = cmd.id;
-                        if (JediProxy.getProperty<object>(response, 'arguments')) {
+
+                        if (JediProxy.getProperty<unknown>(response, 'arguments')) {
                             this.commandQueue.splice(this.commandQueue.indexOf(cmd.id), 1);
                             return;
                         }
@@ -473,9 +405,10 @@ export class JediProxy implements Disposable {
             (error) => this.handleError('subscription.error', `${error}`),
         );
     }
+
     private getCommandHandler(
         command: CommandType,
-    ): undefined | ((command: IExecutionCommand<ICommandResult>, response: object) => void) {
+    ): undefined | ((command: IExecutionCommand<ICommandResult>, response: Record<string, unknown>) => void) {
         switch (command) {
             case CommandType.Completions:
                 return this.onCompletion;
@@ -490,10 +423,11 @@ export class JediProxy implements Disposable {
             case CommandType.Arguments:
                 return this.onArguments;
             default:
-                return;
         }
+        return undefined;
     }
-    private onCompletion(command: IExecutionCommand<ICommandResult>, response: object): void {
+
+    private onCompletion(command: IExecutionCommand<ICommandResult>, response: Record<string, unknown>): void {
         let results = JediProxy.getProperty<IAutoCompleteItem[]>(response, 'results');
         results = Array.isArray(results) ? results : [];
         results.forEach((item) => {
@@ -509,7 +443,7 @@ export class JediProxy implements Disposable {
         this.safeResolve(command, completionResult);
     }
 
-    private onDefinition(command: IExecutionCommand<ICommandResult>, response: object): void {
+    private onDefinition(command: IExecutionCommand<ICommandResult>, response: Record<string, unknown>): void {
         const defs = JediProxy.getProperty<any[]>(response, 'results');
         const defResult: IDefinitionResult = {
             requestId: command.id,
@@ -537,24 +471,22 @@ export class JediProxy implements Disposable {
         this.safeResolve(command, defResult);
     }
 
-    private onHover(command: IExecutionCommand<ICommandResult>, response: object): void {
+    private onHover(command: IExecutionCommand<ICommandResult>, response: Record<string, unknown>): void {
         const defs = JediProxy.getProperty<any[]>(response, 'results');
         const defResult: IHoverResult = {
             requestId: command.id,
-            items: defs.map((def) => {
-                return {
-                    kind: getMappedVSCodeSymbol(def.type),
-                    description: def.description,
-                    signature: def.signature,
-                    docstring: def.docstring,
-                    text: def.text,
-                };
-            }),
+            items: defs.map((def) => ({
+                kind: getMappedVSCodeSymbol(def.type),
+                description: def.description,
+                signature: def.signature,
+                docstring: def.docstring,
+                text: def.text,
+            })),
         };
         this.safeResolve(command, defResult);
     }
 
-    private onSymbols(command: IExecutionCommand<ICommandResult>, response: object): void {
+    private onSymbols(command: IExecutionCommand<ICommandResult>, response: Record<string, unknown>): void {
         let defs = JediProxy.getProperty<any[]>(response, 'results');
         defs = Array.isArray(defs) ? defs : [];
         const defResults: ISymbolResult = {
@@ -581,25 +513,23 @@ export class JediProxy implements Disposable {
         this.safeResolve(command, defResults);
     }
 
-    private onUsages(command: IExecutionCommand<ICommandResult>, response: object): void {
+    private onUsages(command: IExecutionCommand<ICommandResult>, response: Record<string, unknown>): void {
         let defs = JediProxy.getProperty<any[]>(response, 'results');
         defs = Array.isArray(defs) ? defs : [];
         const refResult: IReferenceResult = {
             requestId: command.id,
-            references: defs.map((item) => {
-                return {
-                    columnIndex: item.column,
-                    fileName: item.fileName,
-                    lineIndex: item.line - 1,
-                    moduleName: item.moduleName,
-                    name: item.name,
-                };
-            }),
+            references: defs.map((item) => ({
+                columnIndex: item.column,
+                fileName: item.fileName,
+                lineIndex: item.line - 1,
+                moduleName: item.moduleName,
+                name: item.name,
+            })),
         };
         this.safeResolve(command, refResult);
     }
 
-    private onArguments(command: IExecutionCommand<ICommandResult>, response: object): void {
+    private onArguments(command: IExecutionCommand<ICommandResult>, response: Record<string, unknown>): void {
         const defs = JediProxy.getProperty<any[]>(response, 'results');
 
         this.safeResolve(command, <IArgumentsResult>{
@@ -617,6 +547,7 @@ export class JediProxy implements Disposable {
                     try {
                         this.safeResolve(cmd1, undefined);
                     } catch (ex) {
+                        // Intentionally left blank
                     } finally {
                         this.commands.delete(id);
                     }
@@ -663,6 +594,7 @@ export class JediProxy implements Disposable {
             return '';
         }
     }
+
     private async buildAutoCompletePaths(): Promise<string[]> {
         const filePathPromises = [
             // Sysprefix.
@@ -673,11 +605,11 @@ export class JediProxy implements Disposable {
                 .catch(() => ''),
             // Python specific site packages.
             this.getPathFromPython(internalPython.getSitePackages)
-                .then((libPath) => {
+                .then((libPath) =>
                     // On windows we also need the libs path (second item will return c:\xxx\lib\site-packages).
                     // This is returned by "from distutils.sysconfig import get_python_lib; print(get_python_lib())".
-                    return IS_WINDOWS && libPath.length > 0 ? path.join(libPath, '..') : libPath;
-                })
+                    IS_WINDOWS && libPath.length > 0 ? path.join(libPath, '..') : libPath,
+                )
                 .catch(() => ''),
             // Python global site packages, as a fallback in case user hasn't installed them in custom environment.
             this.getPathFromPython(internalPython.getUserSitePackages).catch(() => ''),
@@ -703,6 +635,7 @@ export class JediProxy implements Disposable {
             return [];
         }
     }
+
     private getEnvironmentVariablesProvider() {
         if (!this.environmentVariablesProvider) {
             this.environmentVariablesProvider = this.serviceContainer.get<IEnvironmentVariablesProvider>(
@@ -714,6 +647,7 @@ export class JediProxy implements Disposable {
         }
         return this.environmentVariablesProvider;
     }
+
     private getConfig(): JediProxyConfig {
         // Add support for paths relative to workspace.
         const extraPaths = this.pythonSettings.autoComplete
@@ -747,6 +681,7 @@ export class JediProxy implements Disposable {
         };
     }
 
+    // eslint-disable-next-line class-methods-use-this
     private safeResolve(
         command: IExecutionCommand<ICommandResult> | undefined | null,
         result: ICommandResult | PromiseLike<ICommandResult> | undefined,
@@ -773,10 +708,6 @@ interface IExecutionCommand<T extends ICommandResult> extends ICommand {
     delay?: number;
 }
 
-export interface ICommandError {
-    message: string;
-}
-
 export interface ICommandResult {
     requestId: number;
 }
@@ -799,21 +730,21 @@ export interface IArgumentsResult extends ICommandResult {
     definitions: ISignature[];
 }
 
-export interface ISignature {
+interface ISignature {
     name: string;
     docstring: string;
     description: string;
     paramindex: number;
     params: IArgument[];
 }
-export interface IArgument {
+interface IArgument {
     name: string;
     value: string;
     docstring: string;
     description: string;
 }
 
-export interface IReference {
+interface IReference {
     name: string;
     fileName: string;
     columnIndex: number;
@@ -827,10 +758,11 @@ export interface IAutoCompleteItem {
     kind: SymbolKind;
     text: string;
     description: string;
+    // eslint-disable-next-line camelcase
     raw_docstring: string;
     rightLabel: string;
 }
-export interface IDefinitionRange {
+interface IDefinitionRange {
     startLine: number;
     startColumn: number;
     endLine: number;
@@ -865,7 +797,7 @@ export class JediProxyHandler<R extends ICommandResult> implements Disposable {
         return this.jediProxy;
     }
 
-    public dispose() {
+    public dispose(): void {
         if (this.jediProxy) {
             this.jediProxy.dispose();
         }

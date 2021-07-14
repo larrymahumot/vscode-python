@@ -1,15 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { cloneDeep } from 'lodash';
+import { cloneDeep, uniq } from 'lodash';
 import * as path from 'path';
+import { getArchitectureDisplayName } from '../../../common/platform/registry';
 import { normalizeFilename } from '../../../common/utils/filesystem';
 import { Architecture } from '../../../common/utils/platform';
 import { arePathsSame } from '../../common/externalDependencies';
+import { getKindDisplayName } from './envKind';
 import { parseVersionFromExecutable } from './executable';
-import { areEqualVersions, areEquivalentVersions, isVersionEmpty } from './pythonVersion';
+import { areIdenticalVersion, areSimilarVersions, getVersionDisplayString, isVersionEmpty } from './pythonVersion';
 
-import { FileInfo, PythonDistroInfo, PythonEnvInfo, PythonEnvKind, PythonReleaseLevel, PythonVersion } from '.';
+import {
+    FileInfo,
+    PythonDistroInfo,
+    PythonEnvInfo,
+    PythonEnvKind,
+    PythonEnvSource,
+    PythonReleaseLevel,
+    PythonVersion,
+} from '.';
 
 /**
  * Create a new info object with all values empty.
@@ -19,14 +29,17 @@ import { FileInfo, PythonDistroInfo, PythonEnvInfo, PythonEnvKind, PythonRelease
 export function buildEnvInfo(init?: {
     kind?: PythonEnvKind;
     executable?: string;
+    name?: string;
     location?: string;
     version?: PythonVersion;
     org?: string;
     arch?: Architecture;
     fileInfo?: { ctime: number; mtime: number };
+    source?: PythonEnvSource[];
+    display?: string;
 }): PythonEnvInfo {
     const env = {
-        name: '',
+        name: init?.name ?? '',
         location: '',
         kind: PythonEnvKind.Unknown,
         executable: {
@@ -36,7 +49,7 @@ export function buildEnvInfo(init?: {
             mtime: init?.fileInfo?.mtime ?? -1,
         },
         searchLocation: undefined,
-        defaultDisplayName: undefined,
+        display: init?.display,
         version: {
             major: -1,
             minor: -1,
@@ -50,6 +63,7 @@ export function buildEnvInfo(init?: {
         distro: {
             org: init?.org ?? '',
         },
+        source: init?.source ?? [],
     };
     if (init !== undefined) {
         updateEnv(env, init);
@@ -98,6 +112,47 @@ function updateEnv(
     if (updates.version !== undefined) {
         env.version = updates.version;
     }
+}
+
+/**
+ * Convert the env info to a user-facing representation.
+ *
+ * The format is `Python <Version> <bitness> (<env name>: <env type>)`
+ * E.g. `Python 3.5.1 32-bit (myenv2: virtualenv)`
+ */
+export function getEnvDisplayString(env: PythonEnvInfo): string {
+    if (env.display === undefined || env.display === '') {
+        env.display = buildEnvDisplayString(env);
+    }
+    return env.display;
+}
+
+function buildEnvDisplayString(env: PythonEnvInfo): string {
+    // main parts
+    const displayNameParts: string[] = ['Python'];
+    if (env.version && !isVersionEmpty(env.version)) {
+        displayNameParts.push(getVersionDisplayString(env.version));
+    }
+    const archName = getArchitectureDisplayName(env.arch);
+    if (archName !== '') {
+        displayNameParts.push(archName);
+    }
+
+    // Note that currently we do not use env.distro in the display name.
+
+    // "suffix"
+    const envSuffixParts: string[] = [];
+    if (env.name && env.name !== '') {
+        envSuffixParts.push(`'${env.name}'`);
+    }
+    const kindName = getKindDisplayName(env.kind);
+    if (kindName !== '') {
+        envSuffixParts.push(kindName);
+    }
+    const envSuffix = envSuffixParts.length === 0 ? '' : `(${envSuffixParts.join(': ')})`;
+
+    // Pull it all together.
+    return `${displayNameParts.join(' ')} ${envSuffix}`.trim();
 }
 
 /**
@@ -214,14 +269,14 @@ export async function getMaxDerivedEnvInfo(minimal: PythonEnvInfo): Promise<Pyth
  *
  * The returned function is compatible with `Array.filter()`.
  */
-export function getEnvMatcher(query: string | Partial<PythonEnvInfo>): (env: PythonEnvInfo) => boolean {
+export function getEnvMatcher(query: string): (env: string) => boolean {
     const executable = getEnvExecutable(query);
     if (executable === '') {
         // We could throw an exception error, but skipping it is fine.
         return () => false;
     }
-    function matchEnv(candidate: PythonEnvInfo): boolean {
-        return arePathsSame(executable, candidate.executable.filename);
+    function matchEnv(candidateExecutable: string): boolean {
+        return arePathsSame(executable, candidateExecutable);
     }
     return matchEnv;
 }
@@ -276,8 +331,8 @@ export function areSameEnv(
         const rightVersion = typeof right === 'string' ? undefined : right.version;
         if (leftVersion && rightVersion) {
             if (
-                areEqualVersions(leftVersion, rightVersion) ||
-                (allowPartialMatch && areEquivalentVersions(leftVersion, rightVersion))
+                areIdenticalVersion(leftVersion, rightVersion) ||
+                (allowPartialMatch && areSimilarVersions(leftVersion, rightVersion))
             ) {
                 return true;
             }
@@ -407,7 +462,7 @@ export function mergeEnvironments(target: PythonEnvInfo, other: PythonEnvInfo): 
     );
 
     merged.arch = merged.arch === Architecture.Unknown ? other.arch : target.arch;
-    merged.defaultDisplayName = merged.defaultDisplayName ?? other.defaultDisplayName;
+    merged.display = merged.display ?? other.display;
     merged.distro = distro;
     merged.executable = executable;
 
@@ -419,6 +474,7 @@ export function mergeEnvironments(target: PythonEnvInfo, other: PythonEnvInfo): 
     merged.name = merged.name.length ? merged.name : other.name;
     merged.searchLocation = merged.searchLocation ?? other.searchLocation;
     merged.version = version;
+    merged.source = uniq([...target.source, ...other.source]);
 
     return merged;
 }

@@ -15,7 +15,6 @@ import {
     Disposable,
     DocumentHighlight,
     DocumentLink,
-    DocumentSelector,
     DocumentSymbol,
     FormattingOptions,
     Location,
@@ -76,17 +75,21 @@ import { NotebookConverter } from './notebookConverter';
 export class NotebookMiddlewareAddon implements Middleware, Disposable {
     private converter: NotebookConverter;
 
+    private didChangeCellsDisposable: Disposable;
+
     constructor(
         notebookApi: IVSCodeNotebook,
         private readonly getClient: () => LanguageClient | undefined,
         fs: IFileSystem,
-        cellSelector: DocumentSelector,
+        cellSelector: string,
         notebookFileRegex: RegExp,
     ) {
         this.converter = new NotebookConverter(notebookApi, fs, cellSelector, notebookFileRegex);
+        this.didChangeCellsDisposable = this.converter.onDidChangeCells(this.onDidChangeCells.bind(this));
     }
 
     public dispose(): void {
+        this.didChangeCellsDisposable.dispose();
         this.converter.dispose();
     }
 
@@ -127,16 +130,15 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     public didClose(document: TextDocument, next: (ev: TextDocument) => void): () => void {
         // If this is a notebook cell, change this into a concat document if this is the first time.
         if (isNotebookCell(document.uri)) {
-            // Cell delete causes this callback, but won't fire the close event because it's not
-            // in the document anymore.
-            if (this.converter.hasCell(document) && !this.converter.hasFiredClose(document)) {
-                this.converter.firedClose(document);
-                const newDoc = this.converter.toOutgoingDocument(document);
+            const newDoc = this.converter.firedClose(document);
+            if (newDoc) {
+                // Cell delete causes this callback, but won't fire the close event because it's not
+                // in the document anymore.
                 next(newDoc);
             }
-        } else {
-            next(document);
         }
+
+        next(document);
 
         return () => {
             // Do nothing
@@ -239,9 +241,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newPos = this.converter.toOutgoingPosition(document, position);
             const result = next(newDoc, newPos, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingLocations.bind(this.converter, document));
+                return result.then(this.converter.toIncomingLocations.bind(this.converter));
             }
-            return this.converter.toIncomingLocations(document, result);
+            return this.converter.toIncomingLocations(result);
         }
         return next(document, position, token);
     }
@@ -260,9 +262,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newPos = this.converter.toOutgoingPosition(document, position);
             const result = next(newDoc, newPos, options, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingLocations.bind(this.converter, document));
+                return result.then(this.converter.toIncomingLocations.bind(this.converter));
             }
-            return this.converter.toIncomingLocations(document, result);
+            return this.converter.toIncomingLocations(result);
         }
         return next(document, position, options, token);
     }
@@ -480,5 +482,17 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         // Otherwise old messages for cells that didn't change this time won't go away.
         const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
         [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
+    }
+
+    private onDidChangeCells(e: TextDocumentChangeEvent) {
+        // This event fires when the user moves, deletes, or inserts cells into the concatenated document
+        // Since this doesn't fire a change event (since a document wasn't changed), we have to make one ourselves.
+
+        // Note: The event should already be setup to be an outgoing event. It's from the point of view of the concatenated document.
+        const client = this.getClient();
+        if (client) {
+            const params = client.code2ProtocolConverter.asChangeTextDocumentParams(e);
+            client.sendNotification(DidChangeTextDocumentNotification.type, params);
+        }
     }
 }

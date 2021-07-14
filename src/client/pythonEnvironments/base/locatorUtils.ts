@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 import { Uri } from 'vscode';
+import { traceVerbose } from '../../common/logger';
 import { createDeferred } from '../../common/utils/async';
 import { getURIFilter } from '../../common/utils/misc';
-import { IDisposable } from '../../common/utils/resourceLifecycle';
 import { PythonEnvInfo } from './info';
-import { getEnvMatcher, getMaxDerivedEnvInfo } from './info/env';
+import { getMaxDerivedEnvInfo } from './info/env';
 import { IPythonEnvsIterator, PythonEnvUpdatedEvent, PythonLocatorQuery } from './locator';
 
 /**
@@ -75,7 +75,7 @@ function getSearchLocationFilters(query: PythonLocatorQuery): ((u: Uri) => boole
  * This includes applying any received updates.
  */
 export async function getEnvs(iterator: IPythonEnvsIterator): Promise<PythonEnvInfo[]> {
-    const envs: PythonEnvInfo[] = [];
+    const envs: (PythonEnvInfo | undefined)[] = [];
 
     const updatesDone = createDeferred<void>();
     if (iterator.onUpdated === undefined) {
@@ -87,6 +87,12 @@ export async function getEnvs(iterator: IPythonEnvsIterator): Promise<PythonEnvI
                 listener.dispose();
             } else {
                 const { index, update } = event;
+                if (envs[index] === undefined) {
+                    const json = JSON.stringify(update);
+                    traceVerbose(
+                        `Updates sent for an env which was classified as invalid earlier, currently not expected, ${json}`,
+                    );
+                }
                 // We don't worry about if envs[index] is set already.
                 envs[index] = update;
             }
@@ -103,7 +109,8 @@ export async function getEnvs(iterator: IPythonEnvsIterator): Promise<PythonEnvI
     }
     await updatesDone.promise;
 
-    return envs;
+    // Do not return invalid environments
+    return envs.filter((e) => e !== undefined).map((e) => e!);
 }
 
 /**
@@ -156,42 +163,4 @@ export async function* iterAndUpdateEnvs(
         // emitted yet (because `done` wasn't `true` yet).
         notify(null);
     }
-}
-
-/**
- * Naively implement `ILocator.resolveEnv()` by searching through an iterator.
- */
-export async function resolveEnvFromIterator(
-    env: string | Partial<PythonEnvInfo>,
-    iterator: IPythonEnvsIterator,
-): Promise<PythonEnvInfo | undefined> {
-    let resolved: PythonEnvInfo | undefined;
-
-    const matchEnv = getEnvMatcher(env);
-
-    let listener: IDisposable | undefined;
-    const done = createDeferred<void>();
-    if (iterator.onUpdated !== undefined) {
-        listener = iterator.onUpdated((event: PythonEnvUpdatedEvent | null) => {
-            if (event === null) {
-                done.resolve();
-            } else if (matchEnv(event.update)) {
-                resolved = event.update;
-            }
-        });
-    } else {
-        done.resolve();
-    }
-    for await (const iterated of iterator) {
-        if (matchEnv(iterated)) {
-            resolved = iterated;
-        }
-    }
-    await done.promise;
-
-    if (listener !== undefined) {
-        listener.dispose();
-    }
-
-    return resolved;
 }

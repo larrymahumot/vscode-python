@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 import { instance, mock, verify } from 'ts-mockito';
 
-import { AATesting } from '../../client/activation/aaTesting';
 import { ExtensionActivationManager } from '../../client/activation/activationManager';
 import { LanguageServerExtensionActivationService } from '../../client/activation/activationService';
 import { DownloadBetaChannelRule, DownloadDailyChannelRule } from '../../client/activation/common/downloadChannelRules';
 import { LanguageServerDownloader } from '../../client/activation/common/downloader';
 import { LanguageServerDownloadChannel } from '../../client/activation/common/packageRepository';
 import { ExtensionSurveyPrompt } from '../../client/activation/extensionSurvey';
+import { JediExtensionActivator } from '../../client/activation/jedi';
 import { DotNetLanguageServerActivator } from '../../client/activation/languageServer/activator';
 import { DotNetLanguageServerAnalysisOptions } from '../../client/activation/languageServer/analysisOptions';
 import { DotNetLanguageClientFactory } from '../../client/activation/languageServer/languageClientFactory';
@@ -46,10 +46,8 @@ import {
     LanguageServerType,
 } from '../../client/activation/types';
 import { INugetRepository } from '../../client/common/nuget/types';
-import { BANNER_NAME_PROPOSE_LS, IPythonExtensionBanner } from '../../client/common/types';
 import { ServiceManager } from '../../client/ioc/serviceManager';
 import { IServiceManager } from '../../client/ioc/types';
-import { ProposePylanceBanner } from '../../client/languageServices/proposeLanguageServerBanner';
 
 suite('Unit Tests - Language Server Activation Service Registry', () => {
     let serviceManager: IServiceManager;
@@ -78,13 +76,6 @@ suite('Unit Tests - Language Server Activation Service Registry', () => {
                 ILanguageServerActivator,
                 DotNetLanguageServerActivator,
                 LanguageServerType.Microsoft,
-            ),
-        ).once();
-        verify(
-            serviceManager.addSingleton<IPythonExtensionBanner>(
-                IPythonExtensionBanner,
-                ProposePylanceBanner,
-                BANNER_NAME_PROPOSE_LS,
             ),
         ).once();
         verify(
@@ -161,14 +152,15 @@ suite('Unit Tests - Language Server Activation Service Registry', () => {
                 LanguageServerType.Microsoft,
             ),
         ).once();
-        verify(serviceManager.add<ILanguageServerProxy>(ILanguageServerProxy, DotNetLanguageServerProxy)).once();
-        verify(serviceManager.add<ILanguageServerManager>(ILanguageServerManager, DotNetLanguageServerManager)).once();
         verify(
-            serviceManager.addSingleton<IExtensionSingleActivationService>(
-                IExtensionSingleActivationService,
-                AATesting,
+            serviceManager.add<ILanguageServerActivator>(
+                ILanguageServerActivator,
+                JediExtensionActivator,
+                LanguageServerType.Jedi,
             ),
         ).once();
+        verify(serviceManager.add<ILanguageServerProxy>(ILanguageServerProxy, DotNetLanguageServerProxy)).once();
+        verify(serviceManager.add<ILanguageServerManager>(ILanguageServerManager, DotNetLanguageServerManager)).once();
         verify(
             serviceManager.addSingleton<ILanguageServerOutputChannel>(
                 ILanguageServerOutputChannel,

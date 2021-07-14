@@ -5,9 +5,15 @@
 
 import { inject, injectable } from 'inversify';
 import { Uri } from 'vscode';
-import { TestDataItem } from '../../types';
 import { visitRecursive } from '../testVisitors/visitor';
-import { ITestCollectionStorageService, ITestsStatusUpdaterService, Tests, TestStatus, TestsToRun } from '../types';
+import {
+    ITestCollectionStorageService,
+    ITestsStatusUpdaterService,
+    TestDataItem,
+    Tests,
+    TestStatus,
+    TestsToRun,
+} from '../types';
 
 @injectable()
 export class TestsStatusUpdaterService implements ITestsStatusUpdaterService {
@@ -64,6 +70,7 @@ export class TestsStatusUpdaterService implements ITestsStatusUpdaterService {
             return;
         }
         const itemsRunning = [
+            ...(testsToRun.testFolder || []),
             ...(testsToRun.testFile || []),
             ...(testsToRun.testSuite || []),
             ...(testsToRun.testFunction || []),

@@ -1,12 +1,10 @@
-import { ProgressLocation, ProgressOptions, window } from 'vscode';
 import '../../common/extensions';
-import { IServiceContainer } from '../../ioc/types';
 import { isTestExecution } from '../constants';
 import { traceError, traceVerbose } from '../logger';
-import { Resource } from '../types';
 import { createDeferred, Deferred } from './async';
-import { getCacheKeyFromFunctionArgs, getGlobalCacheStore, InMemoryInterpreterSpecificCache } from './cacheUtils';
+import { getCacheKeyFromFunctionArgs, getGlobalCacheStore } from './cacheUtils';
 import { TraceInfo, tracing } from './misc';
+import { StopWatch } from './stopWatch';
 
 const _debounce = require('lodash/debounce') as typeof import('lodash/debounce');
 
@@ -122,21 +120,27 @@ export function makeDebounceAsyncDecorator(wait?: number) {
     };
 }
 
-type VSCodeType = typeof import('vscode');
-
-export function clearCachedResourceSpecificIngterpreterData(
-    key: string,
-    resource: Resource,
-    serviceContainer: IServiceContainer,
-    vscode: VSCodeType = require('vscode'),
-) {
-    const cacheStore = new InMemoryInterpreterSpecificCache(key, 0, [resource], serviceContainer, vscode);
-    cacheStore.clear();
-}
-
 type PromiseFunctionWithAnyArgs = (...any: any) => Promise<any>;
 const cacheStoreForMethods = getGlobalCacheStore();
-export function cache(expiryDurationMs: number) {
+
+/**
+ * Extension start up time is considered the duration until extension is likely to keep running commands in background.
+ * It is observed on CI it can take upto 3 minutes, so this is an intelligent guess.
+ */
+const extensionStartUpTime = 200_000;
+/**
+ * Tracks the time since the module was loaded. For caching purposes, we consider this time to approximately signify
+ * how long extension has been active.
+ */
+const moduleLoadWatch = new StopWatch();
+/**
+ * Caches function value until a specific duration.
+ * @param expiryDurationMs Duration to cache the result for. If set as '-1', the cache will never expire for the session.
+ * @param cachePromise If true, cache the promise instead of the promise result.
+ * @param expiryDurationAfterStartUpMs If specified, this is the duration to cache the result for after extension startup (until extension is likely to
+ * keep running commands in background)
+ */
+export function cache(expiryDurationMs: number, cachePromise = false, expiryDurationAfterStartUpMs?: number) {
     return function (
         target: Object,
         propertyName: string,
@@ -151,16 +155,22 @@ export function cache(expiryDurationMs: number) {
             }
             const key = getCacheKeyFromFunctionArgs(keyPrefix, args);
             const cachedItem = cacheStoreForMethods.get(key);
-            if (cachedItem && cachedItem.expiry > Date.now()) {
+            if (cachedItem && (cachedItem.expiry > Date.now() || expiryDurationMs === -1)) {
                 traceVerbose(`Cached data exists ${key}`);
                 return Promise.resolve(cachedItem.data);
             }
+            const expiryMs =
+                expiryDurationAfterStartUpMs && moduleLoadWatch.elapsedTime > extensionStartUpTime
+                    ? expiryDurationAfterStartUpMs
+                    : expiryDurationMs;
             const promise = originalMethod.apply(this, args) as Promise<any>;
-            promise
-                .then((result) =>
-                    cacheStoreForMethods.set(key, { data: result, expiry: Date.now() + expiryDurationMs }),
-                )
-                .ignoreErrors();
+            if (cachePromise) {
+                cacheStoreForMethods.set(key, { data: promise, expiry: Date.now() + expiryMs });
+            } else {
+                promise
+                    .then((result) => cacheStoreForMethods.set(key, { data: result, expiry: Date.now() + expiryMs }))
+                    .ignoreErrors();
+            }
             return promise;
         };
     };
@@ -197,24 +207,6 @@ export function swallowExceptions(scopeName?: string) {
                 }
                 traceError(errorMessage, error);
             }
-        };
-    };
-}
-
-type PromiseFunction = (...any: any[]) => Promise<any>;
-
-export function displayProgress(title: string, location = ProgressLocation.Window) {
-    return function (_target: Object, _propertyName: string, descriptor: TypedPropertyDescriptor<PromiseFunction>) {
-        const originalMethod = descriptor.value!;
-
-        descriptor.value = async function (...args: any[]) {
-            const progressOptions: ProgressOptions = { location, title };
-
-            const promise = originalMethod.apply(this, args);
-            if (!isTestExecution()) {
-                window.withProgress(progressOptions, () => promise);
-            }
-            return promise;
         };
     };
 }

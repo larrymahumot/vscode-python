@@ -8,7 +8,7 @@ import { logWarning } from '../../../../logging';
 import { IEnvsCache } from '../../envsCache';
 import { PythonEnvInfo } from '../../info';
 import { getMinimalPartialInfo } from '../../info/env';
-import { ILocator, IPythonEnvsIterator, PythonLocatorQuery } from '../../locator';
+import { IPythonEnvsIterator, IResolvingLocator, PythonLocatorQuery } from '../../locator';
 import { getEnvs, getQueryFilter } from '../../locatorUtils';
 import { PythonEnvsChangedEvent, PythonEnvsWatcher } from '../../watcher';
 import { LazyResourceBasedLocator } from '../common/resourceBasedLocator';
@@ -17,46 +17,64 @@ import { pickBestEnv } from './reducingLocator';
 /**
  * A locator that stores the known environments in the given cache.
  */
-export class CachingLocator extends LazyResourceBasedLocator {
+export class CachingLocator extends LazyResourceBasedLocator implements IResolvingLocator {
     public readonly onChanged: Event<PythonEnvsChangedEvent>;
 
     private readonly watcher = new PythonEnvsWatcher();
 
     private handleOnChanged?: (event: PythonEnvsChangedEvent) => void;
 
-    constructor(private readonly cache: IEnvsCache, private readonly locator: ILocator) {
+    private refreshCache?: () => Promise<void>;
+
+    constructor(private readonly cache: IEnvsCache, private readonly locator: IResolvingLocator) {
         super();
         this.onChanged = this.watcher.onChanged;
     }
 
     protected async *doIterEnvs(query?: PythonLocatorQuery): IPythonEnvsIterator {
+        if (query?.ignoreCache) {
+            // Ignore current cache, refill it with fresh environments.
+            await this.refreshCache!();
+        }
         yield* this.iterFromCache(query);
     }
 
-    protected async doResolveEnv(env: string | PythonEnvInfo): Promise<PythonEnvInfo | undefined> {
-        // If necessary we could be more aggressive about invalidating
-        // the cached value.
-        const query = getMinimalPartialInfo(env);
-        if (query === undefined) {
-            return undefined;
-        }
-        const candidates = this.cache.filterEnvs(query);
-        if (candidates === undefined) {
-            return undefined;
-        }
-        if (candidates.length > 0) {
-            return pickBestEnv(candidates);
+    public async resolveEnv(env: string): Promise<PythonEnvInfo | undefined> {
+        await this.ensureResourcesReady();
+        let matchingEnvs = this.filterMatchingEnvsFromCache(env);
+        if (matchingEnvs.length > 0) {
+            return pickBestEnv(matchingEnvs);
         }
         // Fall back to the underlying locator.
         const resolved = await this.locator.resolveEnv(env);
         if (resolved !== undefined) {
-            const envs = this.cache.getAllEnvs();
-            if (envs !== undefined) {
-                envs.push(resolved);
-                await this.updateCache(envs);
+            // Add resolved env to cache if it doesn't already exist in cache
+            // The cache may have changed, query again for matching envs
+            matchingEnvs = this.filterMatchingEnvsFromCache(resolved);
+            if (matchingEnvs.length === 0) {
+                const envs = this.cache.getAllEnvs();
+                if (envs !== undefined) {
+                    envs.push(resolved);
+                    await this.updateCache(envs);
+                }
             }
         }
         return resolved;
+    }
+
+    /**
+     * If the cache has been activated, return environment info objects that match a env.
+     * If none of the environments in the cache match the env, return an empty array.
+     */
+    private filterMatchingEnvsFromCache(env: string | PythonEnvInfo): PythonEnvInfo[] {
+        // If necessary we could be more aggressive about invalidating
+        // the cached value.
+        const query = getMinimalPartialInfo(env);
+        if (query === undefined) {
+            return [];
+        }
+        const candidates = this.cache.filterEnvs(query);
+        return candidates !== undefined && candidates.length > 0 ? candidates : [];
     }
 
     protected async initResources(): Promise<void> {
@@ -68,12 +86,18 @@ export class CachingLocator extends LazyResourceBasedLocator {
         looper.start();
         this.disposables.push(looper);
 
+        this.refreshCache = () => this.ensureRecentRefresh(looper);
         this.handleOnChanged = (event) => this.ensureCurrentRefresh(looper, event);
 
         // We assume that `getAllEnvs()` is cheap enough that calling
         // it again in here is not a problem.
         if (this.cache.getAllEnvs() === undefined) {
             await this.ensureRecentRefresh(looper);
+        } else {
+            // Cache only contains complete envs, so not all envs maybe added to cache
+            // But we need to show them eventually, so trigger a refresh in background
+            // but do not block on it as we already have most envs in cache.
+            this.ensureRecentRefresh(looper).ignoreErrors();
         }
     }
 

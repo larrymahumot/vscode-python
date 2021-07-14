@@ -12,7 +12,7 @@ import { IDisposableRegistry, IPersistentState, IPersistentStateFactory } from '
 import { createDeferred, Deferred } from '../../../../common/utils/async';
 import { StopWatch } from '../../../../common/utils/stopWatch';
 import {
-    GetInterpreterLocatorOptions,
+    GetInterpreterOptions,
     IInterpreterLocatorService,
     IInterpreterWatcher,
 } from '../../../../interpreter/contracts';
@@ -109,7 +109,7 @@ export abstract class CacheableLocatorService implements IInterpreterLocatorServ
     public abstract dispose(): void;
 
     @traceDecorators.verbose('Get Interpreters in CacheableLocatorService')
-    public async getInterpreters(resource?: Uri, options?: GetInterpreterLocatorOptions): Promise<PythonEnvironment[]> {
+    public async getInterpreters(resource?: Uri, options?: GetInterpreterOptions): Promise<PythonEnvironment[]> {
         const cacheKey = this.getCacheKey(resource);
         let deferred = this.promisesPerResource.get(cacheKey);
         if (!deferred || options?.ignoreCache) {
@@ -176,7 +176,7 @@ export abstract class CacheableLocatorService implements IInterpreterLocatorServ
         });
     }
 
-    // eslint-disable-next-line class-methods-use-this, @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line class-methods-use-this
     protected async getInterpreterWatchers(_resource: Uri | undefined): Promise<IInterpreterWatcher[]> {
         return [];
     }

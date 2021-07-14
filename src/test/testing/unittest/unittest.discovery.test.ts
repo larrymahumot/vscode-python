@@ -7,12 +7,11 @@ import { EOL } from 'os';
 import * as path from 'path';
 import { instance, mock } from 'ts-mockito';
 import { ConfigurationTarget } from 'vscode';
-import { EXTENSION_ROOT_DIR } from '../../../client/common/constants';
+import { CommandSource, EXTENSION_ROOT_DIR } from '../../../client/common/constants';
 import { IProcessServiceFactory } from '../../../client/common/process/types';
 import { ICondaService, IInterpreterService } from '../../../client/interpreter/contracts';
 import { InterpreterService } from '../../../client/interpreter/interpreterService';
 import { CondaService } from '../../../client/pythonEnvironments/discovery/locators/services/condaService';
-import { CommandSource } from '../../../client/testing/common/constants';
 import { ITestManagerFactory } from '../../../client/testing/common/types';
 import { rootWorkspaceUri, updateSetting } from '../../common';
 import { MockProcessService } from '../../mocks/proc';
@@ -41,14 +40,14 @@ suite('Unit Tests - unittest - discovery with mocked process output', () => {
             await fs.remove(cachePath);
         }
         await initializeTest();
-        initializeDI();
+        await initializeDI();
     });
     teardown(async () => {
         await ioc.dispose();
         await updateSetting('testing.unittestArgs', defaultUnitTestArgs, rootWorkspaceUri, configTarget);
     });
 
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerVariableTypes();
@@ -61,7 +60,7 @@ suite('Unit Tests - unittest - discovery with mocked process output', () => {
             IInterpreterService,
             instance(mock(InterpreterService)),
         );
-        registerForIOC(ioc.serviceManager, ioc.serviceContainer);
+        await registerForIOC(ioc.serviceManager, ioc.serviceContainer);
         ioc.serviceManager.rebindInstance<ICondaService>(ICondaService, instance(mock(CondaService)));
     }
 

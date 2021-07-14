@@ -21,7 +21,7 @@ suite('Language Server: Definition Navigation', () => {
 
     suiteSetup(async () => {
         await initialize();
-        initializeDI();
+        await initializeDI();
         isPython2 = (await ioc.getPythonMajorVersion(rootWorkspaceUri!)) === 2;
     });
     setup(initializeTest);
@@ -31,11 +31,13 @@ suite('Language Server: Definition Navigation', () => {
         await ioc.dispose();
     });
 
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes();
         ioc.registerVariableTypes();
         ioc.registerProcessTypes();
+        ioc.registerInterpreterStorageTypes();
+        await ioc.registerMockInterpreterTypes();
     }
 
     const assertFile = (expectedLocation: string, location: vscode.Uri) => {
@@ -44,9 +46,7 @@ suite('Language Server: Definition Navigation', () => {
         assert.equal(expectedRelLocation, relLocation, 'Position is in wrong file');
     };
 
-    const formatPosition = (position: vscode.Position) => {
-        return `${position.line},${position.character}`;
-    };
+    const formatPosition = (position: vscode.Position) => `${position.line},${position.character}`;
 
     const assertRange = (expectedRange: vscode.Range, range: vscode.Range) => {
         assert.equal(formatPosition(expectedRange.start), formatPosition(range.start), 'Start position is incorrect');
@@ -58,24 +58,22 @@ suite('Language Server: Definition Navigation', () => {
         startPosition: vscode.Position,
         expectedFiles: string[],
         expectedRanges: vscode.Range[],
-    ) => {
-        return async () => {
-            const textDocument = await vscode.workspace.openTextDocument(startFile);
-            await vscode.window.showTextDocument(textDocument);
-            assert(vscode.window.activeTextEditor, 'No active editor');
+    ) => async () => {
+        const textDocument = await vscode.workspace.openTextDocument(startFile);
+        await vscode.window.showTextDocument(textDocument);
+        assert(vscode.window.activeTextEditor, 'No active editor');
 
-            const locations = await vscode.commands.executeCommand<vscode.Location[]>(
-                'vscode.executeDefinitionProvider',
-                textDocument.uri,
-                startPosition,
-            );
-            assert.equal(locations!.length, expectedFiles.length, 'Wrong number of results');
+        const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+            'vscode.executeDefinitionProvider',
+            textDocument.uri,
+            startPosition,
+        );
+        assert.equal(locations!.length, expectedFiles.length, 'Wrong number of results');
 
-            for (let i = 0; i < locations!.length; i += 1) {
-                assertFile(expectedFiles[i], locations![i].uri);
-                assertRange(expectedRanges[i], locations![i].range!);
-            }
-        };
+        for (let i = 0; i < locations!.length; i += 1) {
+            assertFile(expectedFiles[i], locations![i].uri);
+            assertRange(expectedRanges[i], locations![i].range!);
+        }
     };
 
     test(

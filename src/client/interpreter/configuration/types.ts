@@ -25,7 +25,7 @@ export interface IPythonPathUpdaterServiceManager {
 
 export const IInterpreterSelector = Symbol('IInterpreterSelector');
 export interface IInterpreterSelector extends Disposable {
-    getSuggestions(resource: Resource): Promise<IInterpreterQuickPickItem[]>;
+    getSuggestions(resource: Resource, ignoreCache?: boolean): Promise<IInterpreterQuickPickItem[]>;
 }
 
 export interface IInterpreterQuickPickItem extends QuickPickItem {
@@ -37,6 +37,17 @@ export interface IInterpreterQuickPickItem extends QuickPickItem {
      * @memberof IInterpreterQuickPickItem
      */
     interpreter: PythonEnvironment;
+}
+
+export interface IFindInterpreterQuickPickItem {
+    label: string;
+    detail: string;
+    alwaysShow: boolean;
+}
+
+export enum InterpreterComparisonType {
+    Default = 'defaultComparison',
+    EnvType = 'environmentTypeComparison',
 }
 
 export const IInterpreterComparer = Symbol('IInterpreterComparer');

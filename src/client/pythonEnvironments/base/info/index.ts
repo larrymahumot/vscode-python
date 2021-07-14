@@ -29,11 +29,6 @@ export enum PythonEnvKind {
 }
 
 /**
- * A (system-global) unique ID for a single Python environment.
- */
-export type PythonEnvID = string;
-
-/**
  * Information about a file.
  */
 export type FileInfo = {
@@ -50,6 +45,37 @@ export type PythonExecutableInfo = FileInfo & {
 };
 
 /**
+ * Source types indicating how a particular environment was discovered.
+ *
+ * Notes: This is used in auto-selection to figure out which python to select.
+ * We added this field to support the existing mechanism in the extension to
+ * calculate the auto-select python.
+ */
+export enum PythonEnvSource {
+    /**
+     * Environment was found via PATH env variable
+     */
+    PathEnvVar = 'path env var',
+    /**
+     * Environment was found via conda binary or conda environments file
+     */
+    Conda = 'conda',
+    /**
+     * Environment was found at pyenv default location
+     */
+    Pyenv = 'pyenv',
+    /**
+     * Environment was found in windows registry
+     */
+    WindowsRegistry = 'windows registry',
+    /**
+     * Environment was found using other means
+     */
+    Other = 'other',
+    // If source turns out to be useful we will expand this enum to contain more details sources.
+}
+
+/**
  * The most fundamental information about a Python environment.
  *
  * You should expect these objects to be complete (no empty props).
@@ -61,8 +87,9 @@ export type PythonExecutableInfo = FileInfo & {
  * @prop executable - info about the env's Python binary
  * @prop name - the env's distro-specific name, if any
  * @prop location - the env's location (on disk), if relevant
+ * @prop source - the locator[s] which found the environment.
  */
-export type PythonEnvBaseInfo = {
+type PythonEnvBaseInfo = {
     kind: PythonEnvKind;
     executable: PythonExecutableInfo;
     // One of (name, location) must be non-empty.
@@ -72,6 +99,8 @@ export type PythonEnvBaseInfo = {
     // * managed: boolean (if the env is "managed")
     // * parent: PythonEnvBaseInfo (the env from which this one was created)
     // * binDir: string (where env-installed executables are found)
+
+    source: PythonEnvSource[];
 };
 
 /**
@@ -105,7 +134,7 @@ export type PythonVersion = BasicVersionInfo & {
 /**
  * Information for a Python build/installation.
  */
-export type PythonBuildInfo = {
+type PythonBuildInfo = {
     version: PythonVersion; // incl. raw, AKA sys.version
     arch: Architecture;
 };
@@ -116,7 +145,7 @@ export type PythonBuildInfo = {
  * @prop org - the name of the distro's creator/publisher
  * @prop defaultDisplayName - the text to use when showing the distro to users
  */
-export type PythonDistroMetaInfo = {
+type PythonDistroMetaInfo = {
     org: string;
     defaultDisplayName?: string;
 };
@@ -142,12 +171,12 @@ type _PythonEnvInfo = PythonEnvBaseInfo & PythonBuildInfo;
  * they will usually be able to provide the version as well.
  *
  * @prop distro - the installed Python distro that this env is using or belongs to
- * @prop defaultDisplayName - the text to use when showing the env to users
+ * @prop display - the text to use when showing the env to users
  * @prop searchLocation - the root under which a locator found this env, if any
  */
 export type PythonEnvInfo = _PythonEnvInfo & {
     distro: PythonDistroInfo;
-    defaultDisplayName?: string;
+    display?: string;
     searchLocation?: Uri;
 };
 

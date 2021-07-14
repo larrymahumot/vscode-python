@@ -11,8 +11,9 @@ import {
 } from '../../common/process/types';
 import { ExecutionInfo, IConfigurationService, IPythonSettings } from '../../common/types';
 import { IServiceContainer } from '../../ioc/types';
+import { TestProvider } from '../types';
 import { NOSETEST_PROVIDER, PYTEST_PROVIDER, UNITTEST_PROVIDER } from './constants';
-import { ITestRunner, ITestsHelper, Options, TestProvider } from './types';
+import { ITestRunner, ITestsHelper, Options } from './types';
 export { Options } from './types';
 
 @injectable()
@@ -23,11 +24,7 @@ export class TestRunner implements ITestRunner {
     }
 }
 
-export async function run(
-    serviceContainer: IServiceContainer,
-    testProvider: TestProvider,
-    options: Options,
-): Promise<string> {
+async function run(serviceContainer: IServiceContainer, testProvider: TestProvider, options: Options): Promise<string> {
     const testExecutablePath = getExecutablePath(
         testProvider,
         serviceContainer.get<IConfigurationService>(IConfigurationService).getSettings(options.workspaceFolder),

@@ -1,9 +1,9 @@
-import { inject, injectable, multiInject } from 'inversify';
+import { inject, injectable } from 'inversify';
 import { Disposable, OutputChannel, StatusBarAlignment, StatusBarItem, Uri } from 'vscode';
 import { IApplicationShell, IWorkspaceService } from '../../common/application/types';
 import { STANDARD_OUTPUT_CHANNEL } from '../../common/constants';
 import '../../common/extensions';
-import { IDisposableRegistry, IOutputChannel, IPathUtils, Resource } from '../../common/types';
+import { IConfigurationService, IDisposableRegistry, IOutputChannel, IPathUtils, Resource } from '../../common/types';
 import { Interpreters } from '../../common/utils/localize';
 import { IServiceContainer } from '../../ioc/types';
 import { PythonEnvironment } from '../../pythonEnvironments/info';
@@ -15,17 +15,6 @@ import {
     IInterpreterStatusbarVisibilityFilter,
 } from '../contracts';
 
-/**
- * Create this class as Inversify doesn't allow @multiinject if there are no registered items.
- * i.e. we must always have one for @multiinject to work.
- */
-@injectable()
-export class AlwaysDisplayStatusBar implements IInterpreterStatusbarVisibilityFilter {
-    public get hidden(): boolean {
-        return false;
-    }
-}
-
 @injectable()
 export class InterpreterDisplay implements IInterpreterDisplay {
     private readonly statusBar: StatusBarItem;
@@ -33,17 +22,15 @@ export class InterpreterDisplay implements IInterpreterDisplay {
     private readonly workspaceService: IWorkspaceService;
     private readonly pathUtils: IPathUtils;
     private readonly interpreterService: IInterpreterService;
+    private readonly configService: IConfigurationService;
     private currentlySelectedInterpreterPath?: string;
     private currentlySelectedWorkspaceFolder: Resource;
     private readonly autoSelection: IInterpreterAutoSelectionService;
     private interpreterPath: string | undefined;
     private statusBarCanBeDisplayed?: boolean;
+    private visibilityFilters: IInterpreterStatusbarVisibilityFilter[] = [];
 
-    constructor(
-        @inject(IServiceContainer) private readonly serviceContainer: IServiceContainer,
-        @multiInject(IInterpreterStatusbarVisibilityFilter)
-        private readonly visibilityFilters: IInterpreterStatusbarVisibilityFilter[],
-    ) {
+    constructor(@inject(IServiceContainer) private readonly serviceContainer: IServiceContainer) {
         this.helper = serviceContainer.get<IInterpreterHelper>(IInterpreterHelper);
         this.workspaceService = serviceContainer.get<IWorkspaceService>(IWorkspaceService);
         this.pathUtils = serviceContainer.get<IPathUtils>(IPathUtils);
@@ -52,6 +39,7 @@ export class InterpreterDisplay implements IInterpreterDisplay {
 
         const application = serviceContainer.get<IApplicationShell>(IApplicationShell);
         const disposableRegistry = serviceContainer.get<Disposable[]>(IDisposableRegistry);
+        this.configService = serviceContainer.get<IConfigurationService>(IConfigurationService);
 
         this.statusBar = application.createStatusBarItem(StatusBarAlignment.Left, 100);
         this.statusBar.command = 'python.setInterpreter';
@@ -62,9 +50,6 @@ export class InterpreterDisplay implements IInterpreterDisplay {
             this,
             disposableRegistry,
         );
-        this.visibilityFilters
-            .filter((item) => item.changed)
-            .forEach((item) => item.changed!(this.updateVisibility, this, disposableRegistry)); // NOSONAR
     }
     public async refresh(resource?: Uri) {
         // Use the workspace Uri if available
@@ -77,13 +62,23 @@ export class InterpreterDisplay implements IInterpreterDisplay {
         }
         await this.updateDisplay(resource);
     }
+    public registerVisibilityFilter(filter: IInterpreterStatusbarVisibilityFilter) {
+        const disposableRegistry = this.serviceContainer.get<Disposable[]>(IDisposableRegistry);
+        this.visibilityFilters.push(filter);
+        if (filter.changed) {
+            filter.changed(this.updateVisibility, this, disposableRegistry);
+        }
+    }
     private onDidChangeInterpreterInformation(info: PythonEnvironment) {
         if (!this.currentlySelectedInterpreterPath || this.currentlySelectedInterpreterPath === info.path) {
             this.updateDisplay(this.currentlySelectedWorkspaceFolder).ignoreErrors();
         }
     }
     private async updateDisplay(workspaceFolder?: Uri) {
-        await this.autoSelection.autoSelectInterpreter(workspaceFolder);
+        const interpreterPath = this.configService.getSettings(workspaceFolder)?.pythonPath;
+        if (!interpreterPath || interpreterPath === 'python') {
+            await this.autoSelection.autoSelectInterpreter(workspaceFolder); // Block on this only if no interpreter selected.
+        }
         const interpreter = await this.interpreterService.getActiveInterpreter(workspaceFolder);
         this.currentlySelectedWorkspaceFolder = workspaceFolder;
         if (interpreter) {

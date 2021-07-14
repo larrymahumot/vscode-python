@@ -7,7 +7,6 @@ import { traceVerbose } from '../../../../common/logger';
 import { PythonEnvInfo, PythonEnvKind } from '../../info';
 import { areSameEnv, mergeEnvironments } from '../../info/env';
 import { ILocator, IPythonEnvsIterator, PythonEnvUpdatedEvent, PythonLocatorQuery } from '../../locator';
-import { getEnvs } from '../../locatorUtils';
 import { PythonEnvsChangedEvent } from '../../watcher';
 
 /**
@@ -19,15 +18,6 @@ export class PythonEnvsReducer implements ILocator {
     }
 
     constructor(private readonly parentLocator: ILocator) {}
-
-    public async resolveEnv(env: string | PythonEnvInfo): Promise<PythonEnvInfo | undefined> {
-        const environments = await getEnvs(this.iterEnvs());
-        const environment = environments.find((e) => areSameEnv(e, env));
-        if (!environment) {
-            return undefined;
-        }
-        return this.parentLocator.resolveEnv(environment);
-    }
 
     public iterEnvs(query?: PythonLocatorQuery): IPythonEnvsIterator {
         const didUpdate = new EventEmitter<PythonEnvUpdatedEvent | null>();
@@ -54,6 +44,10 @@ async function* iterEnvsIterator(
                 state.done = true;
                 checkIfFinishedAndNotify(state, didUpdate);
                 listener.dispose();
+            } else if (event.update === undefined) {
+                throw new Error(
+                    'Unsupported behavior: `undefined` environment updates are not supported from downstream locators in reducer',
+                );
             } else if (seen[event.index] !== undefined) {
                 state.pending += 1;
                 resolveDifferencesInBackground(event.index, event.update, state, didUpdate, seen).ignoreErrors();

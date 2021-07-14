@@ -42,7 +42,7 @@ export abstract class LanguageServerActivatorBase implements ILanguageServerActi
     protected resource?: Resource;
     constructor(
         protected readonly manager: ILanguageServerManager,
-        private readonly workspace: IWorkspaceService,
+        protected readonly workspace: IWorkspaceService,
         protected readonly fs: IFileSystem,
         protected readonly configurationService: IConfigurationService,
     ) {}
@@ -61,7 +61,7 @@ export abstract class LanguageServerActivatorBase implements ILanguageServerActi
         this.manager.dispose();
     }
 
-    public abstract async ensureLanguageServerIsAvailable(resource: Resource): Promise<void>;
+    public abstract ensureLanguageServerIsAvailable(resource: Resource): Promise<void>;
 
     public activate(): void {
         this.manager.connect();

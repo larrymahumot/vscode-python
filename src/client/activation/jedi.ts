@@ -40,10 +40,7 @@ import { PythonRenameProvider } from '../providers/renameProvider';
 import { PythonSignatureProvider } from '../providers/signatureProvider';
 import { JediSymbolProvider } from '../providers/symbolProvider';
 import { PythonEnvironment } from '../pythonEnvironments/info';
-import { ITestManagementService } from '../testing/types';
-import { BlockFormatProviders } from '../typeFormatters/blockFormatProvider';
-import { OnTypeFormattingDispatcher } from '../typeFormatters/dispatcher';
-import { OnEnterFormatter } from '../typeFormatters/onEnterFormatter';
+import { ITestingService } from '../testing/types';
 import { WorkspaceSymbols } from '../workspaceSymbols/main';
 import { ILanguageServerActivator } from './types';
 
@@ -94,7 +91,7 @@ export class JediExtensionActivator implements ILanguageServerActivator {
             context.subscriptions.push(JediExtensionActivator.workspaceSymbols);
         }
 
-        const testManagementService = this.serviceManager.get<ITestManagementService>(ITestManagementService);
+        const testManagementService = this.serviceManager.get<ITestingService>(ITestingService);
         testManagementService
             .activate(this.symbolProvider)
             .catch((ex) => traceError('Failed to activate Unit Tests', ex));
@@ -134,21 +131,6 @@ export class JediExtensionActivator implements ILanguageServerActivator {
                 languages.registerCompletionItemProvider(this.documentSelector, this.completionProvider, '.'),
             );
             this.registrations.push(languages.registerCodeLensProvider(this.documentSelector, this.codeLensProvider));
-            const onTypeDispatcher = new OnTypeFormattingDispatcher({
-                '\n': new OnEnterFormatter(),
-                ':': new BlockFormatProviders(),
-            });
-            const onTypeTriggers = onTypeDispatcher.getTriggerCharacters();
-            if (onTypeTriggers) {
-                this.registrations.push(
-                    languages.registerOnTypeFormattingEditProvider(
-                        PYTHON,
-                        onTypeDispatcher,
-                        onTypeTriggers.first,
-                        ...onTypeTriggers.more,
-                    ),
-                );
-            }
             this.registrations.push(
                 languages.registerDocumentSymbolProvider(this.documentSelector, this.symbolProvider),
             );

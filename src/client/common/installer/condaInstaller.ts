@@ -1,13 +1,16 @@
+/* eslint-disable class-methods-use-this */
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 import { inject, injectable } from 'inversify';
-import { ICondaService } from '../../interpreter/contracts';
+import { ICondaService, ICondaLocatorService, IComponentAdapter } from '../../interpreter/contracts';
 import { IServiceContainer } from '../../ioc/types';
-import { ExecutionInfo, IConfigurationService } from '../types';
+import { ModuleInstallerType } from '../../pythonEnvironments/info';
+import { inDiscoveryExperiment } from '../experiments/helpers';
+import { ExecutionInfo, IConfigurationService, IExperimentService } from '../types';
 import { isResource } from '../utils/misc';
 import { ModuleInstaller } from './moduleInstaller';
-import { InterpreterUri } from './types';
+import { InterpreterUri, ModuleInstallFlags } from './types';
 
 /**
  * A Python module installer for a conda environment.
@@ -16,6 +19,9 @@ import { InterpreterUri } from './types';
 export class CondaInstaller extends ModuleInstaller {
     public _isCondaAvailable: boolean | undefined;
 
+    // Unfortunately inversify requires the number of args in constructor to be explictly
+    // specified as more than its base class. So we need the constructor.
+    // eslint-disable-next-line @typescript-eslint/no-useless-constructor
     constructor(@inject(IServiceContainer) serviceContainer: IServiceContainer) {
         super(serviceContainer);
     }
@@ -24,8 +30,12 @@ export class CondaInstaller extends ModuleInstaller {
         return 'Conda';
     }
 
-    public get displayName() {
+    public get displayName(): string {
         return 'Conda';
+    }
+
+    public get type(): ModuleInstallerType {
+        return ModuleInstallerType.Conda;
     }
 
     public get priority(): number {
@@ -56,16 +66,29 @@ export class CondaInstaller extends ModuleInstaller {
     /**
      * Return the commandline args needed to install the module.
      */
-    protected async getExecutionInfo(moduleName: string, resource?: InterpreterUri): Promise<ExecutionInfo> {
+    protected async getExecutionInfo(
+        moduleName: string,
+        resource?: InterpreterUri,
+        flags: ModuleInstallFlags = 0,
+    ): Promise<ExecutionInfo> {
         const condaService = this.serviceContainer.get<ICondaService>(ICondaService);
         const condaFile = await condaService.getCondaFile();
 
         const pythonPath = isResource(resource)
             ? this.serviceContainer.get<IConfigurationService>(IConfigurationService).getSettings(resource).pythonPath
             : resource.path;
-        const info = await condaService.getCondaEnvironment(pythonPath);
-        const args = ['install'];
+        const experimentService = this.serviceContainer.get<IExperimentService>(IExperimentService);
+        const condaLocatorService = (await inDiscoveryExperiment(experimentService))
+            ? this.serviceContainer.get<IComponentAdapter>(IComponentAdapter)
+            : this.serviceContainer.get<ICondaLocatorService>(ICondaLocatorService);
+        const info = await condaLocatorService.getCondaEnvironment(pythonPath);
+        const args = [flags & ModuleInstallFlags.upgrade ? 'update' : 'install'];
 
+        // Temporarily ensure tensorboard is installed from the conda-forge
+        // channel since 2.4.1 is not yet available in the default index
+        if (moduleName === 'tensorboard') {
+            args.push('-c', 'conda-forge');
+        }
         if (info && info.name) {
             // If we have the name of the conda environment, then use that.
             args.push('--name');
@@ -74,6 +97,12 @@ export class CondaInstaller extends ModuleInstaller {
             // Else provide the full path to the environment path.
             args.push('--prefix');
             args.push(info.path.fileToCommandArgument());
+        }
+        if (flags & ModuleInstallFlags.updateDependencies) {
+            args.push('--update-deps');
+        }
+        if (flags & ModuleInstallFlags.reInstall) {
+            args.push('--force-reinstall');
         }
         args.push(moduleName);
         args.push('-y');
@@ -87,7 +116,10 @@ export class CondaInstaller extends ModuleInstaller {
      * Is the provided interprter a conda environment
      */
     private async isCurrentEnvironmentACondaEnvironment(resource?: InterpreterUri): Promise<boolean> {
-        const condaService = this.serviceContainer.get<ICondaService>(ICondaService);
+        const experimentService = this.serviceContainer.get<IExperimentService>(IExperimentService);
+        const condaService = (await inDiscoveryExperiment(experimentService))
+            ? this.serviceContainer.get<IComponentAdapter>(IComponentAdapter)
+            : this.serviceContainer.get<ICondaLocatorService>(ICondaLocatorService);
         const pythonPath = isResource(resource)
             ? this.serviceContainer.get<IConfigurationService>(IConfigurationService).getSettings(resource).pythonPath
             : resource.path;

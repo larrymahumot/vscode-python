@@ -6,13 +6,9 @@
 import { instance, mock, verify } from 'ts-mockito';
 import { IExtensionActivationService, IExtensionSingleActivationService } from '../../client/activation/types';
 import { EnvironmentActivationService } from '../../client/interpreter/activation/service';
-import { TerminalEnvironmentActivationService } from '../../client/interpreter/activation/terminalEnvironmentActivationService';
 import { IEnvironmentActivationService } from '../../client/interpreter/activation/types';
 import { InterpreterAutoSelectionService } from '../../client/interpreter/autoSelection';
-import { InterpreterEvaluation } from '../../client/interpreter/autoSelection/interpreterSecurity/interpreterEvaluation';
-import { InterpreterSecurityService } from '../../client/interpreter/autoSelection/interpreterSecurity/interpreterSecurityService';
-import { InterpreterSecurityStorage } from '../../client/interpreter/autoSelection/interpreterSecurity/interpreterSecurityStorage';
-import { InterpreterAutoSeletionProxyService } from '../../client/interpreter/autoSelection/proxy';
+import { InterpreterAutoSelectionProxyService } from '../../client/interpreter/autoSelection/proxy';
 import { CachedInterpretersAutoSelectionRule } from '../../client/interpreter/autoSelection/rules/cached';
 import { CurrentPathInterpretersAutoSelectionRule } from '../../client/interpreter/autoSelection/rules/currentPath';
 import { SettingsInterpretersAutoSelectionRule } from '../../client/interpreter/autoSelection/rules/settings';
@@ -23,11 +19,9 @@ import {
     AutoSelectionRule,
     IInterpreterAutoSelectionRule,
     IInterpreterAutoSelectionService,
-    IInterpreterAutoSeletionProxyService,
-    IInterpreterEvaluation,
-    IInterpreterSecurityService,
-    IInterpreterSecurityStorage,
+    IInterpreterAutoSelectionProxyService,
 } from '../../client/interpreter/autoSelection/types';
+import { EnvironmentTypeComparer } from '../../client/interpreter/configuration/environmentTypeComparer';
 import { InterpreterComparer } from '../../client/interpreter/configuration/interpreterComparer';
 import { ResetInterpreterCommand } from '../../client/interpreter/configuration/interpreterSelector/commands/resetInterpreter';
 import { SetInterpreterCommand } from '../../client/interpreter/configuration/interpreterSelector/commands/setInterpreter';
@@ -38,28 +32,25 @@ import { PythonPathUpdaterServiceFactory } from '../../client/interpreter/config
 import {
     IInterpreterComparer,
     IInterpreterSelector,
+    InterpreterComparisonType,
     IPythonPathUpdaterServiceFactory,
     IPythonPathUpdaterServiceManager,
 } from '../../client/interpreter/configuration/types';
 import {
     IInterpreterDisplay,
     IInterpreterHelper,
-    IInterpreterLocatorProgressHandler,
     IInterpreterService,
     IInterpreterVersionService,
     IShebangCodeLensProvider,
 } from '../../client/interpreter/contracts';
 import { InterpreterDisplay } from '../../client/interpreter/display';
-import { InterpreterSelectionTip } from '../../client/interpreter/display/interpreterSelectionTip';
 import { InterpreterLocatorProgressStatubarHandler } from '../../client/interpreter/display/progressDisplay';
 import { ShebangCodeLensProvider } from '../../client/interpreter/display/shebangCodeLensProvider';
 import { InterpreterHelper } from '../../client/interpreter/helpers';
 import { InterpreterService } from '../../client/interpreter/interpreterService';
 import { InterpreterVersionService } from '../../client/interpreter/interpreterVersion';
 import { registerTypes } from '../../client/interpreter/serviceRegistry';
-import { VirtualEnvironmentManager } from '../../client/interpreter/virtualEnvs';
 import { CondaInheritEnvPrompt } from '../../client/interpreter/virtualEnvs/condaInheritEnvPrompt';
-import { IVirtualEnvironmentManager } from '../../client/interpreter/virtualEnvs/types';
 import { VirtualEnvironmentPrompt } from '../../client/interpreter/virtualEnvs/virtualEnvPrompt';
 import { ServiceManager } from '../../client/ioc/serviceManager';
 
@@ -72,14 +63,8 @@ suite('Interpreters - Service Registry', () => {
             [IExtensionSingleActivationService, SetInterpreterCommand],
             [IExtensionSingleActivationService, ResetInterpreterCommand],
             [IExtensionSingleActivationService, SetShebangInterpreterCommand],
-            [IExtensionSingleActivationService, InterpreterSecurityStorage],
-            [IInterpreterEvaluation, InterpreterEvaluation],
-            [IInterpreterSecurityStorage, InterpreterSecurityStorage],
-            [IInterpreterSecurityService, InterpreterSecurityService],
 
-            [IVirtualEnvironmentManager, VirtualEnvironmentManager],
             [IExtensionActivationService, VirtualEnvironmentPrompt],
-            [IExtensionSingleActivationService, InterpreterSelectionTip],
 
             [IInterpreterVersionService, InterpreterVersionService],
 
@@ -92,9 +77,10 @@ suite('Interpreters - Service Registry', () => {
             [IInterpreterSelector, InterpreterSelector],
             [IShebangCodeLensProvider, ShebangCodeLensProvider],
             [IInterpreterHelper, InterpreterHelper],
-            [IInterpreterComparer, InterpreterComparer],
+            [IInterpreterComparer, InterpreterComparer, InterpreterComparisonType.Default],
+            [IInterpreterComparer, EnvironmentTypeComparer, InterpreterComparisonType.EnvType],
 
-            [IInterpreterLocatorProgressHandler, InterpreterLocatorProgressStatubarHandler],
+            [IExtensionSingleActivationService, InterpreterLocatorProgressStatubarHandler],
 
             [IInterpreterAutoSelectionRule, CurrentPathInterpretersAutoSelectionRule, AutoSelectionRule.currentPath],
             [IInterpreterAutoSelectionRule, SystemWideInterpretersAutoSelectionRule, AutoSelectionRule.systemWide],
@@ -110,15 +96,15 @@ suite('Interpreters - Service Registry', () => {
             ],
             [IInterpreterAutoSelectionRule, CachedInterpretersAutoSelectionRule, AutoSelectionRule.cachedInterpreters],
             [IInterpreterAutoSelectionRule, SettingsInterpretersAutoSelectionRule, AutoSelectionRule.settings],
-            [IInterpreterAutoSeletionProxyService, InterpreterAutoSeletionProxyService],
+            [IInterpreterAutoSelectionProxyService, InterpreterAutoSelectionProxyService],
             [IInterpreterAutoSelectionService, InterpreterAutoSelectionService],
 
             [EnvironmentActivationService, EnvironmentActivationService],
-            [TerminalEnvironmentActivationService, TerminalEnvironmentActivationService],
             [IEnvironmentActivationService, EnvironmentActivationService],
             [IExtensionActivationService, CondaInheritEnvPrompt],
         ].forEach((mapping) => {
-            verify(serviceManager.addSingleton.apply(serviceManager, mapping as any)).once();
+            // eslint-disable-next-line prefer-spread
+            verify(serviceManager.addSingleton.apply(serviceManager, mapping as never)).once();
         });
     });
 });

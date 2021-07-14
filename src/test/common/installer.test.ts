@@ -7,7 +7,7 @@ import { ActiveResourceService } from '../../client/common/application/activeRes
 import { ApplicationEnvironment } from '../../client/common/application/applicationEnvironment';
 import { ClipboardService } from '../../client/common/application/clipboard';
 import { ReloadVSCodeCommandHandler } from '../../client/common/application/commands/reloadCommand';
-import { CustomEditorService } from '../../client/common/application/customEditorService';
+import { ReportIssueCommandHandler } from '../../client/common/application/commands/reportIssueCommand';
 import { DebugService } from '../../client/common/application/debugService';
 import { DebugSessionTelemetry } from '../../client/common/application/debugSessionTelemetry';
 import { DocumentManager } from '../../client/common/application/documentManager';
@@ -18,7 +18,6 @@ import {
     IApplicationShell,
     IClipboard,
     ICommandManager,
-    ICustomEditorService,
     IDebugService,
     IDocumentManager,
     IWorkspaceService,
@@ -28,9 +27,7 @@ import { AsyncDisposableRegistry } from '../../client/common/asyncDisposableRegi
 import { ConfigurationService } from '../../client/common/configuration/service';
 import { CryptoUtils } from '../../client/common/crypto';
 import { EditorUtils } from '../../client/common/editor';
-import { ExperimentsManager } from '../../client/common/experiments/manager';
 import { ExperimentService } from '../../client/common/experiments/service';
-import { FeatureDeprecationManager } from '../../client/common/featureDeprecationManager';
 import {
     ExtensionInsidersDailyChannelRule,
     ExtensionInsidersOffChannelRule,
@@ -52,7 +49,6 @@ import {
     FormatterProductPathService,
     LinterProductPathService,
     RefactoringLibraryProductPathService,
-    TensorBoardProductPathService,
     TestFrameworkProductPathService,
 } from '../../client/common/installer/productPath';
 import { ProductService } from '../../client/common/installer/productService';
@@ -103,9 +99,7 @@ import {
     ICurrentProcess,
     IEditorUtils,
     IExperimentService,
-    IExperimentsManager,
     IExtensions,
-    IFeatureDeprecationManager,
     IFileDownloader,
     IHttpClient,
     IInstaller,
@@ -128,7 +122,7 @@ import { rootWorkspaceUri, updateSetting } from '../common';
 import { MockModuleInstaller } from '../mocks/moduleInstaller';
 import { MockProcessService } from '../mocks/proc';
 import { UnitTestIocContainer } from '../testing/serviceRegistry';
-import { closeActiveWindows, initializeTest, IS_MULTI_ROOT_TEST } from './../initialize';
+import { closeActiveWindows, initializeTest, IS_MULTI_ROOT_TEST } from '../initialize';
 
 suite('Installer', () => {
     let ioc: UnitTestIocContainer;
@@ -138,7 +132,7 @@ suite('Installer', () => {
     setup(async () => {
         await initializeTest();
         await resetSettings();
-        initializeDI();
+        await initializeDI();
     });
     suiteTeardown(async () => {
         await closeActiveWindows();
@@ -149,7 +143,7 @@ suite('Installer', () => {
         await closeActiveWindows();
     });
 
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerUnitTestTypes();
         ioc.registerFileSystemTypes();
@@ -179,7 +173,7 @@ suite('Installer', () => {
         ioc.serviceManager.addSingleton<IConfigurationService>(IConfigurationService, ConfigurationService);
         ioc.serviceManager.addSingleton<IWorkspaceService>(IWorkspaceService, WorkspaceService);
 
-        ioc.registerMockInterpreterTypes();
+        await ioc.registerMockInterpreterTypes();
         ioc.registerMockProcessTypes();
         ioc.serviceManager.addSingletonInstance<boolean>(IsWindows, false);
         ioc.serviceManager.addSingletonInstance<IProductService>(IProductService, new ProductService());
@@ -208,12 +202,6 @@ suite('Installer', () => {
             RefactoringLibraryProductPathService,
             ProductType.RefactoringLibrary,
         );
-        ioc.serviceManager.addSingleton<IProductPathService>(
-            IProductPathService,
-            TensorBoardProductPathService,
-            ProductType.TensorBoard,
-        );
-
         ioc.serviceManager.addSingleton<IActiveResourceService>(IActiveResourceService, ActiveResourceService);
         ioc.serviceManager.addSingleton<IInterpreterPathService>(IInterpreterPathService, InterpreterPathService);
         ioc.serviceManager.addSingleton<IExtensions>(IExtensions, Extensions);
@@ -234,7 +222,6 @@ suite('Installer', () => {
             PowershellTerminalActivationFailedHandler,
         );
         ioc.serviceManager.addSingleton<ICryptoUtils>(ICryptoUtils, CryptoUtils);
-        ioc.serviceManager.addSingleton<IExperimentsManager>(IExperimentsManager, ExperimentsManager);
         ioc.serviceManager.addSingleton<IExperimentService>(IExperimentService, ExperimentService);
 
         ioc.serviceManager.addSingleton<ITerminalHelper>(ITerminalHelper, TerminalHelper);
@@ -263,11 +250,6 @@ suite('Installer', () => {
             PipEnvActivationCommandProvider,
             TerminalActivationProviders.pipenv,
         );
-        ioc.serviceManager.addSingleton<IFeatureDeprecationManager>(
-            IFeatureDeprecationManager,
-            FeatureDeprecationManager,
-        );
-
         ioc.serviceManager.addSingleton<IAsyncDisposableRegistry>(IAsyncDisposableRegistry, AsyncDisposableRegistry);
         ioc.serviceManager.addSingleton<IMultiStepInputFactory>(IMultiStepInputFactory, MultiStepInputFactory);
         ioc.serviceManager.addSingleton<IImportTracker>(IImportTracker, ImportTracker);
@@ -284,6 +266,10 @@ suite('Installer', () => {
         ioc.serviceManager.addSingleton<IExtensionSingleActivationService>(
             IExtensionSingleActivationService,
             ReloadVSCodeCommandHandler,
+        );
+        ioc.serviceManager.addSingleton<IExtensionSingleActivationService>(
+            IExtensionSingleActivationService,
+            ReportIssueCommandHandler,
         );
         ioc.serviceManager.addSingleton<IExtensionChannelService>(IExtensionChannelService, ExtensionChannelService);
         ioc.serviceManager.addSingleton<IExtensionChannelRule>(
@@ -305,7 +291,6 @@ suite('Installer', () => {
             IExtensionSingleActivationService,
             DebugSessionTelemetry,
         );
-        ioc.serviceManager.addSingleton<ICustomEditorService>(ICustomEditorService, CustomEditorService);
     }
     async function resetSettings() {
         await updateSetting('linting.pylintEnabled', true, rootWorkspaceUri, ConfigurationTarget.Workspace);
@@ -319,8 +304,7 @@ suite('Installer', () => {
         const checkInstalledDef = createDeferred<boolean>();
         processService.onExec((_file, args, _options, callback) => {
             const moduleName = installer.translateProductToModuleName(product, ModuleNamePurpose.run);
-            // args[0] is pyvsc-run-isolated.py.
-            if (args.length > 1 && args[1] === '-c' && args[2] === `import ${moduleName}`) {
+            if (args.length > 1 && args[0] === '-c' && args[1] === `import ${moduleName}`) {
                 checkInstalledDef.resolve(true);
             }
             callback({ stdout: '' });
@@ -343,9 +327,11 @@ suite('Installer', () => {
             );
             ioc.serviceManager.addSingletonInstance<ITerminalHelper>(ITerminalHelper, instance(mock(TerminalHelper)));
             if (prod.value === Product.ctags || prod.value === Product.unittest || prod.value === Product.isort) {
-                return;
+                return undefined;
             }
             await testCheckingIfProductIsInstalled(prod.value);
+
+            return undefined;
         });
     });
 
@@ -355,9 +341,8 @@ suite('Installer', () => {
         const moduleInstallers = ioc.serviceContainer.getAll<MockModuleInstaller>(IModuleInstaller);
         const moduleInstallerOne = moduleInstallers.find((item) => item.displayName === 'two')!;
 
-        moduleInstallerOne.on('installModule', (moduleName) => {
-            const installName = installer.translateProductToModuleName(product, ModuleNamePurpose.install);
-            if (installName === moduleName) {
+        moduleInstallerOne.on('installModule', (name: Product | string) => {
+            if (product === name) {
                 checkInstalledDef.resolve();
             }
         });
@@ -367,7 +352,7 @@ suite('Installer', () => {
     getNamesAndValues<Product>(Product).forEach((prod) => {
         test(`Ensure install for Product: '${prod.name}' executes the right command in IModuleInstaller`, async function () {
             const productType = new ProductService().getProductType(prod.value);
-            if (productType === ProductType.DataScience || productType === ProductType.TensorBoard) {
+            if (productType === ProductType.DataScience) {
                 return this.skip();
             }
             ioc.serviceManager.addSingletonInstance<IModuleInstaller>(
@@ -380,9 +365,11 @@ suite('Installer', () => {
             );
             ioc.serviceManager.addSingletonInstance<ITerminalHelper>(ITerminalHelper, instance(mock(TerminalHelper)));
             if (prod.value === Product.unittest || prod.value === Product.ctags || prod.value === Product.isort) {
-                return;
+                return undefined;
             }
             await testInstallingProduct(prod.value);
+
+            return undefined;
         });
     });
 });

@@ -3,10 +3,10 @@
 
 import { uniq } from 'lodash';
 import * as path from 'path';
-import { traceVerbose } from '../../../../common/logger';
+import { traceError, traceVerbose } from '../../../../common/logger';
 import { chain, iterable } from '../../../../common/utils/async';
 import { getUserHomeDir } from '../../../../common/utils/platform';
-import { PythonEnvInfo, PythonEnvKind } from '../../../base/info';
+import { PythonEnvInfo, PythonEnvKind, PythonEnvSource } from '../../../base/info';
 import { buildEnvInfo } from '../../../base/info/env';
 import { IPythonEnvsIterator } from '../../../base/locator';
 import { FSWatchingLocator } from '../../../base/locators/lowLevel/fsWatchingLocator';
@@ -14,13 +14,14 @@ import {
     findInterpretersInDir,
     getEnvironmentDirFromPath,
     getPythonVersionFromPath,
-    isStandardPythonBinary,
+    looksLikeBasicVirtualPython,
 } from '../../../common/commonUtils';
 import {
     getFileInfo,
     getPythonSetting,
     onDidChangePythonSetting,
     pathExists,
+    untildify,
 } from '../../../common/externalDependencies';
 import { isPipenvEnvironment } from './pipEnvHelper';
 import {
@@ -28,7 +29,8 @@ import {
     isVirtualenvEnvironment,
     isVirtualenvwrapperEnvironment,
 } from './virtualEnvironmentIdentifier';
-
+import '../../../../common/extensions';
+import { asyncFilter } from '../../../../common/utils/arrayUtils';
 /**
  * Default number of levels of sub-directories to recurse when looking for interpreters.
  */
@@ -44,14 +46,14 @@ async function getCustomVirtualEnvDirs(): Promise<string[]> {
     const venvDirs: string[] = [];
     const venvPath = getPythonSetting<string>(VENVPATH_SETTING_KEY);
     if (venvPath) {
-        venvDirs.push(venvPath);
+        venvDirs.push(untildify(venvPath));
     }
     const venvFolders = getPythonSetting<string[]>(VENVFOLDERS_SETTING_KEY) ?? [];
     const homeDir = getUserHomeDir();
     if (homeDir && (await pathExists(homeDir))) {
         venvFolders.map((item) => path.join(homeDir, item)).forEach((d) => venvDirs.push(d));
     }
-    return uniq(venvDirs).filter(pathExists);
+    return asyncFilter(uniq(venvDirs), pathExists);
 }
 
 /**
@@ -85,6 +87,7 @@ async function buildSimpleVirtualEnvInfo(executablePath: string, kind: PythonEnv
         kind,
         version: await getPythonVersionFromPath(executablePath),
         executable: executablePath,
+        source: [PythonEnvSource.Other],
     });
     const location = getEnvironmentDirFromPath(executablePath);
     envInfo.location = location;
@@ -124,22 +127,27 @@ export class CustomVirtualEnvironmentLocator extends FSWatchingLocator {
                 async function* generator() {
                     traceVerbose(`Searching for custom virtual envs in: ${envRootDir}`);
 
-                    const envGenerator = findInterpretersInDir(envRootDir, DEFAULT_SEARCH_DEPTH);
+                    const executables = findInterpretersInDir(envRootDir, DEFAULT_SEARCH_DEPTH);
 
-                    for await (const env of envGenerator) {
+                    for await (const entry of executables) {
+                        const { filename } = entry;
                         // We only care about python.exe (on windows) and python (on linux/mac)
                         // Other version like python3.exe or python3.8 are often symlinks to
                         // python.exe or python in the same directory in the case of virtual
                         // environments.
-                        if (isStandardPythonBinary(env)) {
-                            // We should extract the kind here to avoid doing is*Environment()
-                            // check multiple times. Those checks are file system heavy and
-                            // we can use the kind to determine this anyway.
-                            const kind = await getVirtualEnvKind(env);
-                            yield buildSimpleVirtualEnvInfo(env, kind);
-                            traceVerbose(`Custom Virtual Environment: [added] ${env}`);
+                        if (await looksLikeBasicVirtualPython(entry)) {
+                            try {
+                                // We should extract the kind here to avoid doing is*Environment()
+                                // check multiple times. Those checks are file system heavy and
+                                // we can use the kind to determine this anyway.
+                                const kind = await getVirtualEnvKind(filename);
+                                yield buildSimpleVirtualEnvInfo(filename, kind);
+                                traceVerbose(`Custom Virtual Environment: [added] ${filename}`);
+                            } catch (ex) {
+                                traceError(`Failed to process environment: ${filename}`, ex);
+                            }
                         } else {
-                            traceVerbose(`Custom Virtual Environment: [skipped] ${env}`);
+                            traceVerbose(`Custom Virtual Environment: [skipped] ${filename}`);
                         }
                     }
                 }
@@ -150,18 +158,5 @@ export class CustomVirtualEnvironmentLocator extends FSWatchingLocator {
         }
 
         return iterator();
-    }
-
-    // eslint-disable-next-line class-methods-use-this
-    protected async doResolveEnv(env: string | PythonEnvInfo): Promise<PythonEnvInfo | undefined> {
-        const executablePath = typeof env === 'string' ? env : env.executable.filename;
-        if (await pathExists(executablePath)) {
-            // We should extract the kind here to avoid doing is*Environment()
-            // check multiple times. Those checks are file system heavy and
-            // we can use the kind to determine this anyway.
-            const kind = await getVirtualEnvKind(executablePath);
-            return buildSimpleVirtualEnvInfo(executablePath, kind);
-        }
-        return undefined;
     }
 }

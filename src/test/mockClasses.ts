@@ -38,6 +38,8 @@ export class MockOutputChannel implements vscode.OutputChannel {
 }
 
 export class MockStatusBarItem implements vscode.StatusBarItem {
+    backgroundColor: vscode.ThemeColor | undefined;
+    accessibilityInformation?: vscode.AccessibilityInformation | undefined;
     public alignment!: vscode.StatusBarAlignment;
     public priority!: number;
     public text!: string;
@@ -54,6 +56,7 @@ export class MockStatusBarItem implements vscode.StatusBarItem {
 
 export class MockLintingSettings implements ILintingSettings {
     public enabled!: boolean;
+    public cwd?: string;
     public ignorePatterns!: string[];
     public prospectorEnabled!: boolean;
     public prospectorArgs!: string[];

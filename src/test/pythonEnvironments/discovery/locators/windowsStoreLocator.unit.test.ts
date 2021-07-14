@@ -10,7 +10,7 @@ import * as platformApis from '../../../../client/common/utils/platform';
 import {
     PythonEnvInfo,
     PythonEnvKind,
-    PythonReleaseLevel,
+    PythonEnvSource,
     PythonVersion,
     UNKNOWN_PYTHON_VERSION,
 } from '../../../../client/pythonEnvironments/base/info';
@@ -19,11 +19,12 @@ import { parseVersion } from '../../../../client/pythonEnvironments/base/info/py
 import * as externalDep from '../../../../client/pythonEnvironments/common/externalDependencies';
 import {
     getWindowsStorePythonExes,
+    isWindowsStoreDir,
     WindowsStoreLocator,
 } from '../../../../client/pythonEnvironments/discovery/locators/services/windowsStoreLocator';
 import { getEnvs } from '../../base/common';
 import { TEST_LAYOUT_ROOT } from '../../common/commonTestConstants';
-import { assertEnvEqual, assertEnvsEqual } from './envTestUtils';
+import { assertEnvsEqual } from './envTestUtils';
 
 suite('Windows Store', () => {
     suite('Utils', () => {
@@ -48,6 +49,15 @@ suite('Windows Store', () => {
 
             const actual = await getWindowsStorePythonExes();
             assert.deepEqual(actual, expected);
+        });
+
+        test('isWindowsStoreDir: valid case', () => {
+            assert.deepStrictEqual(isWindowsStoreDir(testStoreAppRoot), true);
+            assert.deepStrictEqual(isWindowsStoreDir(testStoreAppRoot + path.sep), true);
+        });
+
+        test('isWindowsStoreDir: invalid case', () => {
+            assert.deepStrictEqual(isWindowsStoreDir(__dirname), false);
         });
     });
 
@@ -152,12 +162,13 @@ suite('Windows Store', () => {
                     const data = pathToData.get(k);
                     if (data) {
                         return {
-                            defaultDisplayName: undefined,
+                            display: undefined,
                             searchLocation: undefined,
                             name: '',
                             location: '',
                             kind: PythonEnvKind.WindowsStore,
                             distro: { org: 'Microsoft' },
+                            source: [PythonEnvSource.PathEnvVar],
                             ...createExpectedInterpreterInfo(k),
                         };
                     }
@@ -170,87 +181,6 @@ suite('Windows Store', () => {
             );
 
             assertEnvsEqual(actualEnvs, expectedEnvs);
-        });
-
-        test('resolveEnv(string)', async () => {
-            const python38path = path.join(testStoreAppRoot, 'python3.8.exe');
-            const expected = {
-                defaultDisplayName: undefined,
-                searchLocation: undefined,
-                name: '',
-                location: '',
-                kind: PythonEnvKind.WindowsStore,
-                distro: { org: 'Microsoft' },
-                ...createExpectedInterpreterInfo(python38path),
-            };
-
-            const actual = await locator.resolveEnv(python38path);
-
-            assertEnvEqual(actual, expected);
-        });
-
-        test('resolveEnv(PythonEnvInfo)', async () => {
-            const python38path = path.join(testStoreAppRoot, 'python3.8.exe');
-            const expected = {
-                defaultDisplayName: undefined,
-                searchLocation: undefined,
-                name: '',
-                location: '',
-                kind: PythonEnvKind.WindowsStore,
-                distro: { org: 'Microsoft' },
-                ...createExpectedInterpreterInfo(python38path),
-            };
-
-            // Partially filled in env info object
-            const input: PythonEnvInfo = {
-                name: '',
-                location: '',
-                defaultDisplayName: undefined,
-                searchLocation: undefined,
-                kind: PythonEnvKind.WindowsStore,
-                distro: { org: 'Microsoft' },
-                arch: platformApis.Architecture.x64,
-                executable: {
-                    filename: python38path,
-                    sysPrefix: '',
-                    ctime: -1,
-                    mtime: -1,
-                },
-                version: {
-                    major: 3,
-                    minor: -1,
-                    micro: -1,
-                    release: { level: PythonReleaseLevel.Final, serial: -1 },
-                },
-            };
-
-            const actual = await locator.resolveEnv(input);
-
-            assertEnvEqual(actual, expected);
-        });
-        test('resolveEnv(string): forbidden path', async () => {
-            const python38path = path.join(testLocalAppData, 'Program Files', 'WindowsApps', 'python3.8.exe');
-            const expected = {
-                defaultDisplayName: undefined,
-                searchLocation: undefined,
-                name: '',
-                location: '',
-                kind: PythonEnvKind.WindowsStore,
-                distro: { org: 'Microsoft' },
-                ...createExpectedInterpreterInfo(python38path),
-            };
-
-            const actual = await locator.resolveEnv(python38path);
-
-            assertEnvEqual(actual, expected);
-        });
-        test('resolveEnv(string): Non store python', async () => {
-            // Use a non store root path
-            const python38path = path.join(testLocalAppData, 'python3.8.exe');
-
-            const actual = await locator.resolveEnv(python38path);
-
-            assert.deepStrictEqual(actual, undefined);
         });
     });
 });

@@ -10,7 +10,8 @@ import { getLanguageConfiguration } from '../../client/language/languageConfigur
 const NEEDS_INDENT = [
     /^break$/,
     /^continue$/,
-    /^raise$/, // only re-raise
+    // raise is indented unless it's the only thing on the line
+    /^raise\b/,
     /^return\b/,
 ];
 const INDENT_ON_ENTER = [
@@ -29,6 +30,8 @@ const INDENT_ON_ENTER = [
     /^if\b/,
     /^elif\b/,
     /^else\b/,
+    /^match\b/,
+    /^case\b/,
 ];
 const DEDENT_ON_ENTER = [
     // block-ending statements
@@ -37,7 +40,9 @@ const DEDENT_ON_ENTER = [
     ///^return\b/,
     /^break$/,
     /^continue$/,
-    /^raise\b/,
+    // For now we are mostly ignoring "return".
+    // See https://github.com/microsoft/vscode-python/issues/10583.
+    /^raise$/,
     /^pass\b/,
 ];
 
@@ -177,6 +182,16 @@ suite('Language Configuration', () => {
             'except TestError:',
             'except :',
             'finally:',
+            'match item:',
+            'case 200:',
+            'case (1, 1):',
+            'case Point(x=0, y=0):',
+            'case [Point(0, 0)]:',
+            'case Point(x, y) if x == y:',
+            'case (Point(x1, y1), Point(x2, y2) as p2):',
+            'case Color.RED:',
+            'case 401 | 403 | 404:',
+            'case _:',
             // simple statemenhts
             'pass',
             'raise Exception(msg)',

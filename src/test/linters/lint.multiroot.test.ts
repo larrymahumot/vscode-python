@@ -14,7 +14,7 @@ import { ProductService } from '../../client/common/installer/productService';
 import { IProductPathService, IProductService } from '../../client/common/installer/types';
 import { IConfigurationService, IOutputChannel, Product, ProductType } from '../../client/common/types';
 import { ILinter, ILinterManager } from '../../client/linters/types';
-import { TEST_OUTPUT_CHANNEL } from '../../client/testing/common/constants';
+import { TEST_OUTPUT_CHANNEL } from '../../client/testing/constants';
 import { TEST_TIMEOUT } from '../constants';
 import { closeActiveWindows, initialize, initializeTest, IS_MULTI_ROOT_TEST } from '../initialize';
 import { UnitTestIocContainer } from '../testing/serviceRegistry';
@@ -33,7 +33,7 @@ suite('Multiroot Linting', () => {
         return initialize();
     });
     setup(async () => {
-        initializeDI();
+        await initializeDI();
         await initializeTest();
     });
     suiteTeardown(closeActiveWindows);
@@ -43,14 +43,14 @@ suite('Multiroot Linting', () => {
         PythonSettings.dispose();
     });
 
-    function initializeDI() {
+    async function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerCommonTypes(false);
         ioc.registerProcessTypes();
         ioc.registerLinterTypes();
         ioc.registerVariableTypes();
         ioc.registerFileSystemTypes();
-        ioc.registerMockInterpreterTypes();
+        await ioc.registerMockInterpreterTypes();
         ioc.registerInterpreterStorageTypes();
         ioc.serviceManager.addSingletonInstance<IProductService>(IProductService, new ProductService());
         ioc.serviceManager.addSingleton<IProductPathService>(

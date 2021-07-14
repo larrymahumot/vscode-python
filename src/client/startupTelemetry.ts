@@ -8,11 +8,12 @@ import { traceError } from './common/logger';
 import { ITerminalHelper } from './common/terminal/types';
 import {
     IConfigurationService,
-    IExperimentsManager,
+    IExperimentService,
     IInterpreterPathService,
     InspectInterpreterSettingType,
     Resource,
 } from './common/types';
+import { IStopWatch } from './common/utils/stopWatch';
 import {
     AutoSelectionRule,
     IInterpreterAutoSelectionRule,
@@ -24,14 +25,11 @@ import { PythonEnvironment } from './pythonEnvironments/info';
 import { sendTelemetryEvent } from './telemetry';
 import { EventName } from './telemetry/constants';
 import { EditorLoadTelemetry } from './telemetry/types';
-
-interface IStopWatch {
-    elapsedTime: number;
-}
+import { IStartupDurations } from './types';
 
 export async function sendStartupTelemetry(
     activatedPromise: Promise<any>,
-    durations: Record<string, number>,
+    durations: IStartupDurations,
     stopWatch: IStopWatch,
     serviceContainer: IServiceContainer,
 ) {
@@ -41,7 +39,7 @@ export async function sendStartupTelemetry(
 
     try {
         await activatedPromise;
-        durations.totalActivateTime = stopWatch.elapsedTime;
+        durations.totalNonBlockingActivateTime = stopWatch.elapsedTime - durations.startActivateTime;
         const props = await getActivationTelemetryProps(serviceContainer);
         sendTelemetryEvent(EventName.EDITOR_LOAD, durations, props);
     } catch (ex) {
@@ -51,7 +49,7 @@ export async function sendStartupTelemetry(
 
 export async function sendErrorTelemetry(
     ex: Error,
-    durations: Record<string, number>,
+    durations: IStartupDurations,
     serviceContainer?: IServiceContainer,
 ) {
     try {
@@ -79,16 +77,15 @@ function isUsingGlobalInterpreterInWorkspace(currentPythonPath: string, serviceC
 }
 
 export function hasUserDefinedPythonPath(resource: Resource, serviceContainer: IServiceContainer) {
-    const abExperiments = serviceContainer.get<IExperimentsManager>(IExperimentsManager);
+    const abExperiments = serviceContainer.get<IExperimentService>(IExperimentService);
     const workspaceService = serviceContainer.get<IWorkspaceService>(IWorkspaceService);
     const interpreterPathService = serviceContainer.get<IInterpreterPathService>(IInterpreterPathService);
     let settings: InspectInterpreterSettingType;
-    if (abExperiments.inExperiment(DeprecatePythonPath.experiment)) {
+    if (abExperiments.inExperimentSync(DeprecatePythonPath.experiment)) {
         settings = interpreterPathService.inspect(resource);
     } else {
         settings = workspaceService.getConfiguration('python', resource)!.inspect<string>('pythonPath')!;
     }
-    abExperiments.sendTelemetryIfInExperiment(DeprecatePythonPath.control);
     return (settings.workspaceFolderValue && settings.workspaceFolderValue !== 'python') ||
         (settings.workspaceValue && settings.workspaceValue !== 'python') ||
         (settings.globalValue && settings.globalValue !== 'python')

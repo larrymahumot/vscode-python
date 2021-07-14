@@ -14,9 +14,8 @@ import {
     CONDA_ENV_FILE_SERVICE,
     CONDA_ENV_SERVICE,
     CURRENT_PATH_SERVICE,
-    GetInterpreterLocatorOptions,
+    GetInterpreterOptions,
     GLOBAL_VIRTUAL_ENV_SERVICE,
-    IComponentAdapter,
     IInterpreterLocatorHelper,
     IInterpreterLocatorService,
     KNOWN_PATH_SERVICE,
@@ -25,7 +24,6 @@ import {
     WORKSPACE_VIRTUAL_ENV_SERVICE,
 } from '../../../interpreter/contracts';
 import { IServiceContainer } from '../../../ioc/types';
-import { PythonEnvInfo } from '../../base/info';
 import { ILocator, IPythonEnvsIterator, NOOP_ITERATOR, PythonLocatorQuery } from '../../base/locator';
 import { combineIterators, Locators } from '../../base/locators';
 import { LazyResourceBasedLocator } from '../../base/locators/common/resourceBasedLocator';
@@ -102,28 +100,6 @@ export class WorkspaceLocators extends LazyResourceBasedLocator {
         return combineIterators(iterators);
     }
 
-    protected async doResolveEnv(env: string | PythonEnvInfo): Promise<PythonEnvInfo | undefined> {
-        if (typeof env !== 'string' && env.searchLocation) {
-            const found = this.locators[env.searchLocation.toString()];
-            if (found !== undefined) {
-                const [rootLocator] = found;
-                return rootLocator.resolveEnv(env);
-            }
-        }
-        // Fall back to checking all the roots.
-        // The eslint disable below should be removed after we have a
-        // better solution for these. We need asyncFind for this.
-        for (const key of Object.keys(this.locators)) {
-            const [locator] = this.locators[key];
-            // eslint-disable-next-line no-await-in-loop
-            const resolved = await locator.resolveEnv(env);
-            if (resolved !== undefined) {
-                return resolved;
-            }
-        }
-        return undefined;
-    }
-
     protected async initResources(): Promise<void> {
         const disposable = this.watchRoots({
             initRoot: (root: Uri) => this.addRoot(root),
@@ -182,12 +158,6 @@ export class WorkspaceLocators extends LazyResourceBasedLocator {
     }
 }
 
-// The parts of IComponentAdapter used here.
-interface IComponent {
-    hasInterpreters: Promise<boolean | undefined>;
-    getInterpreters(resource?: Uri, options?: GetInterpreterLocatorOptions): Promise<PythonEnvironment[] | undefined>;
-}
-
 /**
  * Facilitates locating Python interpreters.
  */
@@ -207,10 +177,7 @@ export class PythonInterpreterLocatorService implements IInterpreterLocatorServi
         Promise<PythonEnvironment[]>
     >();
 
-    constructor(
-        @inject(IServiceContainer) private serviceContainer: IServiceContainer,
-        @inject(IComponentAdapter) private readonly pyenvs: IComponent,
-    ) {
+    constructor(@inject(IServiceContainer) private serviceContainer: IServiceContainer) {
         this._hasInterpreters = createDeferred<boolean>();
         serviceContainer.get<Disposable[]>(IDisposableRegistry).push(this);
         this.platform = serviceContainer.get<IPlatformService>(IPlatformService);
@@ -231,12 +198,7 @@ export class PythonInterpreterLocatorService implements IInterpreterLocatorServi
     }
 
     public get hasInterpreters(): Promise<boolean> {
-        return this.pyenvs.hasInterpreters.then((res) => {
-            if (res !== undefined) {
-                return res;
-            }
-            return this._hasInterpreters.completed ? this._hasInterpreters.promise : Promise.resolve(false);
-        });
+        return this._hasInterpreters.completed ? this._hasInterpreters.promise : Promise.resolve(false);
     }
 
     /**
@@ -255,11 +217,7 @@ export class PythonInterpreterLocatorService implements IInterpreterLocatorServi
      * interpreters.
      */
     @traceDecorators.verbose('Get Interpreters')
-    public async getInterpreters(resource?: Uri, options?: GetInterpreterLocatorOptions): Promise<PythonEnvironment[]> {
-        const envs = await this.pyenvs.getInterpreters(resource, options);
-        if (envs !== undefined) {
-            return envs;
-        }
+    public async getInterpreters(resource?: Uri, options?: GetInterpreterOptions): Promise<PythonEnvironment[]> {
         const locators = this.getLocators(options);
         const promises = locators.map(async (provider) => provider.getInterpreters(resource));
         locators.forEach((locator) => {
@@ -285,7 +243,7 @@ export class PythonInterpreterLocatorService implements IInterpreterLocatorServi
      *
      * The locators are pulled from the registry.
      */
-    private getLocators(options?: GetInterpreterLocatorOptions): IInterpreterLocatorService[] {
+    private getLocators(options?: GetInterpreterOptions): IInterpreterLocatorService[] {
         // The order of the services is important.
         // The order is important because the data sources at the bottom of the list do not contain all,
         //  the information about the interpreters (e.g. type, environment name, etc).
